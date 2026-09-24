@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=deBang Launcher
+GenericName=Minecraft Launcher
+Comment=Стильный лаунчер Minecraft с поддержкой Vanilla, Fabric и NeoForge
+Exec=debang-launcher %u
+Icon=debang-launcher
+Terminal=false
+Categories=Game;Utility;
+Keywords=minecraft;launcher;modpack;neoforge;fabric;
+StartupNotify=true
+StartupWMClass=debang-launcher

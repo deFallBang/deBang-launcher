@@ -1,0 +1,76 @@
+{
+  "presets": [
+    {
+      "id": "catppuccin",
+      "name": "Catppuccin Mocha",
+      "vars": {
+        "--bg1": "#11111b",
+        "--bg2": "#1e1e2e",
+        "--surface": "rgba(49, 50, 68, 0.55)",
+        "--surface-strong": "rgba(69, 71, 90, 0.72)",
+        "--border": "rgba(147, 153, 202, 0.14)",
+        "--text": "#cdd6f4",
+        "--text-dim": "#9399b2",
+        "--accent": "#cba6f7",
+        "--accent-fg": "#11111b",
+        "--danger": "#f38ba8",
+        "--good": "#a6e3a1",
+        "--warn": "#f9e2af"
+      }
+    },
+    {
+      "id": "nord",
+      "name": "Nord Frost",
+      "vars": {
+        "--bg1": "#242933",
+        "--bg2": "#2e3440",
+        "--surface": "rgba(59, 66, 82, 0.55)",
+        "--surface-strong": "rgba(67, 76, 94, 0.75)",
+        "--border": "rgba(136, 192, 208, 0.14)",
+        "--text": "#eceff4",
+        "--text-dim": "#aeb6c3",
+        "--accent": "#88c0d0",
+        "--accent-fg": "#2e3440",
+        "--danger": "#bf616a",
+        "--good": "#a3be8c",
+        "--warn": "#ebcb8b"
+      }
+    },
+    {
+      "id": "oled",
+      "name": "Midnight OLED",
+      "vars": {
+        "--bg1": "#000000",
+        "--bg2": "#05070d",
+        "--surface": "rgba(17, 19, 26, 0.66)",
+        "--surface-strong": "rgba(26, 29, 39, 0.82)",
+        "--border": "rgba(255, 255, 255, 0.08)",
+        "--text": "#e7eaf0",
+        "--text-dim": "#8b93a8",
+        "--accent": "#4cc2ff",
+        "--accent-fg": "#000000",
+        "--danger": "#ff5d5d",
+        "--good": "#4ade80",
+        "--warn": "#fbbf24"
+      }
+    },
+    {
+      "id": "cyberpunk",
+      "name": "Cyberpunk Neon",
+      "vars": {
+        "--bg1": "#0d0221",
+        "--bg2": "#1b0b3a",
+        "--surface": "rgba(29, 12, 58, 0.60)",
+        "--surface-strong": "rgba(44, 16, 86, 0.78)",
+        "--border": "rgba(247, 6, 207, 0.22)",
+        "--text": "#f3eaff",
+        "--text-dim": "#a98fd0",
+        "--accent": "#f706cf",
+        "--accent-fg": "#0d0221",
+        "--danger": "#ff4d6d",
+        "--good": "#2bd97c",
+        "--warn": "#fcee0a"
+      }
+    }
+  ]
+}

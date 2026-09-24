@@ -1,0 +1,49 @@
+# Maintainer: deFallBang <defallbang@users.noreply.github.com>
+pkgname=debang-launcher
+_pkgname=deBang-launcher
+pkgver=1.2.0
+pkgrel=1
+pkgdesc="Ultra-styled, deeply customizable Minecraft launcher (Vanilla/Fabric/NeoForge, modpacks)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/deFallBang/deBang-launcher"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3')
+makedepends=(
+  'rust'
+  'nodejs'
+  'npm'
+  'base-devel'
+  'pkgconf'
+  'patchelf'
+  'fakeroot'
+)
+optdepends=(
+  'jre-openjdk: Java для Minecraft (Java 21 для 1.20.5–1.21.x)'
+  'jre17-openjdk: Java 17 для старых версий Minecraft'
+)
+provides=('debang-launcher')
+conflicts=()
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/$_pkgname-$pkgver"
+  npm ci
+  npm run tauri build -- --no-bundle
+}
+
+package() {
+  cd "$srcdir/$_pkgname-$pkgver"
+
+  install -Dm755 "src-tauri/target/release/debang-launcher" \
+    "$pkgdir/usr/bin/debang-launcher"
+  install -Dm644 "packaging/debang-launcher.desktop" \
+    "$pkgdir/usr/share/applications/app.debang.launcher.desktop"
+  for size in 32 64 128 256; do
+    install -Dm644 "src-tauri/icons/${size}x${size}.png" \
+      "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/debang-launcher.png" 2>/dev/null || true
+  done
+  install -Dm644 "src-tauri/icons/128x128@2x.png" \
+    "$pkgdir/usr/share/icons/hicolor/128x128/apps/debang-launcher.png" 2>/dev/null || true
+  install -Dm644 "LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

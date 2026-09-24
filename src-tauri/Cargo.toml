@@ -1,0 +1,33 @@
+[package]
+name = "debang-launcher"
+version = "1.2.0"
+description = "Ultra-styled, deeply customizable Minecraft launcher (Vanilla, Fabric, NeoForge, modpacks)"
+authors = ["deFallBang"]
+license = "MIT"
+homepage = "https://github.com/deFallBang/deBang-launcher"
+repository = "https://github.com/deFallBang/deBang-launcher"
+readme = "../README.md"
+keywords = ["minecraft", "launcher", "neoforge", "fabric", "modpack"]
+categories = ["games"]
+edition = "2021"
+
+[lib]
+name = "debang_launcher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "io-util", "time"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

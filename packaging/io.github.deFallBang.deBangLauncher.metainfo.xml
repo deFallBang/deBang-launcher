@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.deFallBang.deBangLauncher</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>deBang Launcher</name>
+  <summary>Стильный и глубоко настраиваемый лаунчер Minecraft</summary>
+
+  <description>
+    <p>
+      deBang Launcher — лаунчер Minecraft на Tauri 2 (Rust) + React, который
+      действительно запускает игру: сам скачивает клиент, библиотеки и ресурсы
+      Mojang, собирает classpath и стартует Vanilla, Fabric и NeoForge
+      (установщик NeoForge запускается автоматически).
+    </p>
+    <ul>
+      <li>Поддержка Vanilla, Fabric и NeoForge; для классического Forge — импорт run.sh / run.bat</li>
+      <li>Изолированные инстансы: моды, ресурспаки, шейдеры, миры</li>
+      <li>Установка сборок Modrinth (.mrpack) с выбором версии сборки</li>
+      <li>Каталог Modrinth: моды, ресурспаки и шейдеры под вашу версию игры</li>
+      <li>Живая консоль игры (stdout/stderr) прямо в приложении</li>
+      <li>Темы, акцентный цвет, фоновое изображение или видео с размытием</li>
+      <li>Настраиваемый ник в игре, память JVM и пресеты флагов Java</li>
+    </ul>
+    <p>
+      Требуется Java: 8/17 для старых версий, 21 для 1.20.5–1.21.x, 25+ для
+      новых. Лаунчер находит установленные JDK автоматически.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">app.debang.launcher.desktop</launchable>
+
+  <categories>
+    <category>Game</category>
+    <category>Utility</category>
+  </categories>
+
+  <keywords>
+    <keyword>minecraft</keyword>
+    <keyword>launcher</keyword>
+    <keyword>modpack</keyword>
+    <keyword>neoforge</keyword>
+    <keyword>fabric</keyword>
+  </keywords>
+
+  <url type="homepage">https://github.com/deFallBang/deBang-launcher</url>
+  <url type="bugtracker">https://github.com/deFallBang/deBang-launcher/issues</url>
+  <url type="vcs-browser">https://github.com/deFallBang/deBang-launcher</url>
+
+  <developer id="io.github.deFallBang">
+    <name>deFallBang</name>
+  </developer>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/01.png</image>
+      <caption>Обзор инстансов и запуск игры</caption>
+    </screenshot>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/02.png</image>
+      <caption>Каталог Modrinth: моды, ресурспаки, шейдеры и сборки</caption>
+    </screenshot>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/03.png</image>
+      <caption>Консоль игры с живым выводом</caption>
+    </screenshot>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/04.png</image>
+      <caption>Оформление: темы, акцент и фон</caption>
+    </screenshot>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/05.png</image>
+      <caption>Настройки Java, памяти и ника в игре</caption>
+    </screenshot>
+  </screenshots>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="1.2.0" date="2026-09-24">
+      <description>
+        <p>Первый публичный релиз: Vanilla/Fabric/NeoForge, инстансы, сборки Modrinth с выбором версии, консоль, темы, настраиваемый ник.</p>
+      </description>
+    </release>
+  </releases>
+</component>
