@@ -4,6 +4,81 @@ use tauri::State;
 use std::fs;
 use std::path::PathBuf;
 
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyConfig {
+    /// "None" | "Socks5" | "Http"
+    #[serde(default = "default_proxy_type")]
+    pub kind: String,
+    #[serde(default)]
+    pub host: String,
+    #[serde(default)]
+    pub port: u16,
+    #[serde(default)]
+    pub login: String,
+    #[serde(default)]
+    pub password: String,
+}
+
+fn default_proxy_type() -> String {
+    "None".to_string()
+}
+
+impl Default for ProxyConfig {
+    fn default() -> Self {
+        Self {
+            kind: default_proxy_type(),
+            host: String::new(),
+            port: 0,
+            login: String::new(),
+            password: String::new(),
+        }
+    }
+}
+
+impl ProxyConfig {
+    /// Java system properties for this proxy. SOCKS5 uses the Java SOCKS
+    /// properties (auth via java.net.socks.*), HTTP covers both http/https.
+    pub fn java_args(&self) -> Vec<String> {
+        let host = self.host.trim();
+        if matches!(self.kind.as_str(), "None" | "" | "none") || host.is_empty() || self.port == 0 {
+            return Vec::new();
+        }
+        let h = host.to_string();
+        let p = self.port.to_string();
+        let mut out = Vec::new();
+        if self.kind.eq_ignore_ascii_case("socks5") || self.kind.eq_ignore_ascii_case("socks") {
+            out.push(format!("-DsocksProxyHost={}", h));
+            out.push(format!("-DsocksProxyPort={}", p));
+            if !self.login.trim().is_empty() {
+                out.push(format!("-Djava.net.socks.username={}", self.login.trim()));
+            }
+            if !self.password.is_empty() {
+                out.push(format!("-Djava.net.socks.password={}", self.password));
+            }
+        } else {
+            out.push(format!("-Dhttp.proxyHost={}", h));
+            out.push(format!("-Dhttp.proxyPort={}", p));
+            out.push(format!("-Dhttps.proxyHost={}", h));
+            out.push(format!("-Dhttps.proxyPort={}", p));
+        }
+        out
+    }
+
+    /// Short, secret-free description for the log.
+    pub fn describe(&self) -> String {
+        if self.java_args().is_empty() {
+            return "без прокси".to_string();
+        }
+        let auth = if self.login.trim().is_empty() && self.password.is_empty() {
+            ""
+        } else {
+            ", с авторизацией"
+        };
+        format!("{} {}:{}{}", self.kind, self.host.trim(), self.port, auth)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InstanceConfig {
@@ -14,6 +89,19 @@ pub struct InstanceConfig {
     pub created: String,
     #[serde(default)]
     pub uuid: String,
+    /// Per-instance proxy. Absent in configs written by older versions.
+    #[serde(default)]
+    pub proxy: ProxyConfig,
+    /// Let the launcher pick GC flags based on Java + Minecraft version.
+    #[serde(default = "yes")]
+    pub auto_gc: bool,
+    /// Let the launcher pick Xms/Xmx from the version and system RAM.
+    #[serde(default)]
+    pub auto_mem: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 pub fn pseudo_uuid(seed: &str) -> String {
@@ -139,12 +227,16 @@ pub fn safe_join(base: &std::path::Path, rel: &str) -> Result<PathBuf, String> {
 
 fn read_config(dir: &std::path::Path) -> Option<InstanceConfig> {
     let raw = fs::read_to_string(dir.join("instance.json")).ok()?;
-    let cfg: InstanceConfig = serde_json::from_str(&raw).ok()?;
+    let mut cfg: InstanceConfig = serde_json::from_str(&raw).ok()?;
     if cfg.id.trim().is_empty()
         || cfg.version.trim().is_empty()
         || !is_valid_loader(&cfg.loader)
     {
         return None;
+    }
+    // tolerate unknown proxy kinds from hand-edited configs
+    if !matches!(cfg.proxy.kind.as_str(), "None" | "Socks5" | "Http") {
+        cfg.proxy.kind = "None".into();
     }
     Some(cfg)
 }
@@ -221,6 +313,9 @@ pub fn create_instance(
         loader,
         created: chrono_now(),
         uuid: pseudo_uuid(&id),
+        proxy: ProxyConfig::default(),
+        auto_gc: true,
+        auto_mem: false,
     };
     if let Err(e) = fs::write(
         dir.join("instance.json"),
@@ -280,6 +375,72 @@ pub async fn download_mod(
 /// Copies a user-picked wallpaper/video into the launcher data directory and
 /// returns the stored path. The webview's asset scope only covers that
 /// directory, so a compromised frontend cannot read arbitrary files.
+/// Writes instance.json with owner-only permissions — it may contain proxy
+/// credentials.
+pub fn write_config(dir: &std::path::Path, cfg: &InstanceConfig) -> Result<(), String> {
+    let body = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
+    let path = dir.join("instance.json");
+    fs::write(&path, body).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
+fn info_for(cfg: InstanceConfig) -> InstanceInfo {
+    let dir = instance_dir(&cfg.id).unwrap_or_else(|_| PathBuf::from(&cfg.id));
+    let mod_count = fs::read_dir(dir.join("mods"))
+        .map(|rd| rd.flatten().count())
+        .unwrap_or(0);
+    InstanceInfo {
+        config: cfg,
+        dir: dir.to_string_lossy().to_string(),
+        mod_count,
+        has_run_script: dir.join("run.sh").exists() || dir.join("run.bat").exists(),
+    }
+}
+
+#[tauri::command]
+/// Loose parameters on purpose: Tauri resolves each argument by its (snake_
+/// case) name, so the frontend must send exactly these keys:
+/// `instanceId`, `proxy`, `autoGc`, `autoMem` — see the contract test below.
+pub fn update_instance_settings(
+    instance_id: String,
+    proxy: Option<ProxyConfig>,
+    auto_gc: Option<bool>,
+    auto_mem: Option<bool>,
+) -> Result<InstanceInfo, String> {
+    let dir = instance_dir(&instance_id)?;
+    let mut cfg = read_config(&dir).ok_or("Инстанс не найден или повреждён")?;
+    if let Some(p) = proxy {
+        if !matches!(p.kind.as_str(), "None" | "Socks5" | "Http") {
+            return Err("неизвестный тип прокси".into());
+        }
+        if p.kind != "None" {
+            if p.host.trim().is_empty() {
+                return Err("укажите хост прокси".into());
+            }
+            if p.port == 0 {
+                return Err("укажите порт прокси".into());
+            }
+            if p.host.contains(char::is_whitespace) {
+                return Err("недопустимый хост прокси".into());
+            }
+        }
+        cfg.proxy = p;
+    }
+    if let Some(v) = auto_gc {
+        cfg.auto_gc = v;
+    }
+    if let Some(v) = auto_mem {
+        cfg.auto_mem = v;
+    }
+    write_config(&dir, &cfg)?;
+    Ok(info_for(cfg))
+}
+
 #[tauri::command]
 pub fn import_background(src: String) -> Result<String, String> {
     let src_path = std::path::Path::new(&src);
@@ -379,4 +540,50 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+#[cfg(test)]
+mod settings_ipc_tests {
+    use super::*;
+
+    /// Mirrors the payload src/lib/api.ts sends. The command itself must keep
+    /// loose parameters named exactly like these fields in snake_case:
+    /// instanceId -> instance_id, autoGc -> auto_gc, autoMem -> auto_mem.
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct FrontendPayload {
+        instance_id: String,
+        #[serde(default)]
+        proxy: Option<ProxyConfig>,
+        #[serde(default)]
+        auto_gc: Option<bool>,
+        #[serde(default)]
+        auto_mem: Option<bool>,
+    }
+
+    #[test]
+    fn frontend_payload_matches_command_args() {
+        let raw = r#"{
+            "instanceId": "my-instance",
+            "autoGc": true,
+            "autoMem": false,
+            "proxy": { "kind": "Socks5", "host": "127.0.0.1", "port": 1080, "login": "u", "password": "p" }
+        }"#;
+        let p: FrontendPayload = serde_json::from_str(raw).expect("payload must deserialise");
+        assert_eq!(p.instance_id, "my-instance");
+        assert_eq!(p.auto_gc, Some(true));
+        assert_eq!(p.auto_mem, Some(false));
+        let proxy = p.proxy.expect("proxy present");
+        assert_eq!(proxy.kind, "Socks5");
+        assert_eq!(proxy.port, 1080);
+    }
+
+    #[test]
+    fn proxy_defaults_when_only_toggles_are_sent() {
+        let p: FrontendPayload =
+            serde_json::from_str(r#"{"instanceId":"x","autoMem":true}"#).unwrap();
+        assert!(p.proxy.is_none());
+        assert_eq!(p.auto_mem, Some(true));
+        assert!(p.auto_gc.is_none());
+    }
 }

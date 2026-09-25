@@ -72,6 +72,89 @@ fn emit_status(app: &AppHandle, id: &str, code: Option<i32>) {
     );
 }
 
+/// Java major version of a binary, if it can be queried.
+pub fn java_major_of(path: &str) -> Option<u32> {
+    java::detect_java()
+        .into_iter()
+        .find(|j| j.path == path)
+        .map(|j| j.major)
+        .or_else(|| {
+            let out = std::process::Command::new(path).arg("-version").output().ok()?;
+            let text = format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            let raw = text.split("version \"").nth(1)?.split('"').next()?;
+            if raw.starts_with("1.") {
+                raw.strip_prefix("1.")?.split('.').next()?.parse().ok()
+            } else {
+                raw.split(['.', '-']).next()?.parse().ok()
+            }
+        })
+}
+
+fn total_ram_mb() -> u64 {
+    crate::sysinfo::get_mem_info().map(|m| m.total_mb).unwrap_or(4096)
+}
+
+/// What the launcher would pass to the JVM for this instance — shown in the
+/// profile settings dialog before the game starts.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchPlanView {
+    pub java_major: u32,
+    pub min_mem_mb: u32,
+    pub max_mem_mb: u32,
+    pub auto_gc: bool,
+    pub auto_mem: bool,
+    pub auto_gc_applied: bool,
+    pub gc_flags: Vec<String>,
+    pub proxy_enabled: bool,
+    pub notes: Vec<String>,
+}
+
+#[tauri::command]
+/// Loose parameters: the frontend must send `instanceId` and `settings`
+/// (Tauri resolves arguments by their snake_case parameter names).
+pub fn instance_launch_plan(
+    instance_id: String,
+    settings: LaunchSettings,
+) -> Result<LaunchPlanView, String> {
+    let dir = instance_dir(&instance_id)?;
+    let raw = std::fs::read_to_string(dir.join("instance.json"))
+        .map_err(|_| "Инстанс не найден".to_string())?;
+    let cfg: crate::instances::InstanceConfig =
+        serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    let req = if cfg.version == "1.8.9" { 8 } else { 17 };
+    let java = pick_java(&settings.java_path, req).unwrap_or_default();
+    let java_major = java_major_of(&java).unwrap_or(0);
+    let user_args: Vec<String> = settings
+        .jvm_args
+        .iter()
+        .flat_map(|a| a.split_whitespace().map(String::from))
+        .collect();
+    let plan = crate::jvm::build_plan(
+        &cfg,
+        java_major,
+        total_ram_mb(),
+        &user_args,
+        settings.min_mem_mb,
+        settings.max_mem_mb,
+    );
+    Ok(LaunchPlanView {
+        java_major: plan.java_major,
+        min_mem_mb: plan.min_mem_mb,
+        max_mem_mb: plan.max_mem_mb,
+        auto_gc: cfg.auto_gc,
+        auto_mem: cfg.auto_mem,
+        auto_gc_applied: plan.auto_gc_applied,
+        gc_flags: plan.gc_flags,
+        proxy_enabled: !plan.proxy_args.is_empty(),
+        notes: plan.notes,
+    })
+}
+
 fn pick_java(preferred: &str, major: u32) -> Result<String, String> {
     let installs = java::detect_java();
     if !preferred.is_empty() {
@@ -130,15 +213,37 @@ pub async fn launch_instance(
         .collect();
 
     let (program, args) = if let Some(jar) = manual_jar {
+        let java_major = java_major_of(&settings.java_path).unwrap_or(0);
+        let plan = crate::jvm::build_plan(
+            &cfg,
+            java_major,
+            total_ram_mb(),
+            &jvm_user,
+            settings.min_mem_mb,
+            settings.max_mem_mb,
+        );
+        for n in &plan.notes {
+            emit(&app, format!("│ {}", n), "launcher");
+        }
         let mut a = vec![
-            format!("-Xms{}M", settings.min_mem_mb),
-            format!("-Xmx{}M", settings.max_mem_mb),
+            format!("-Xms{}M", plan.min_mem_mb),
+            format!("-Xmx{}M", plan.max_mem_mb),
         ];
+        a.extend(plan.gc_flags.iter().cloned());
+        a.extend(plan.proxy_args.iter().cloned());
         a.extend(jvm_user);
         a.push("-jar".into());
         a.push(jar.to_string_lossy().to_string());
         (settings.java_path.clone(), a)
     } else if run_sh.exists() {
+        if cfg.auto_gc || cfg.auto_mem || !cfg.proxy.java_args().is_empty() {
+            emit(
+                &app,
+                "│ run.sh запускается скриптом: авто-GC, авто-память и прокси из профиля НЕ применяются"
+                    .to_string(),
+                "launcher",
+            );
+        }
         (
             "/bin/bash".into(),
             vec![run_sh.to_string_lossy().to_string()],
@@ -221,10 +326,23 @@ pub async fn launch_instance(
             }
         };
         let java = pick_java(&settings.java_path, prepared.java_major)?;
+        let plan = crate::jvm::build_plan(
+            &cfg,
+            prepared.java_major,
+            total_ram_mb(),
+            &jvm_user,
+            settings.min_mem_mb,
+            settings.max_mem_mb,
+        );
+        for n in &plan.notes {
+            emit(&app, format!("│ {}", n), "launcher");
+        }
         let mut a = vec![
-            format!("-Xms{}M", settings.min_mem_mb),
-            format!("-Xmx{}M", settings.max_mem_mb),
+            format!("-Xms{}M", plan.min_mem_mb),
+            format!("-Xmx{}M", plan.max_mem_mb),
         ];
+        a.extend(plan.gc_flags.iter().cloned());
+        a.extend(plan.proxy_args.iter().cloned());
         a.extend(jvm_user);
         a.extend(prepared.jvm.iter().cloned());
         if let Some(cp) = &prepared.classpath {
@@ -244,7 +362,11 @@ pub async fn launch_instance(
                 }
             })
             .collect();
-        emit(&app, format!("$ {} {}", java, shown.join(" ")), "launcher");
+        emit(
+            &app,
+            format!("$ {} {}", java, crate::jvm::redact(&shown).join(" ")),
+            "launcher",
+        );
         emit(
             &app,
             format!(
@@ -380,4 +502,33 @@ pub fn is_game_running(state: State<'_, LauncherState>) -> bool {
 pub fn cancel_download(app: AppHandle, state: State<'_, LauncherState>) {
     let _ = state.cancel.send(true);
     emit(&app, "⏹ отмена загрузки запрошена…".to_string(), "launcher");
+}
+
+#[cfg(test)]
+mod ipc_tests {
+    use super::*;
+
+    /// Mirrors the payload src/lib/api.ts sends for the profile preview:
+    /// `instanceId` -> instance_id, `settings` -> settings.
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct FrontendPayload {
+        instance_id: String,
+        settings: LaunchSettings,
+    }
+
+    #[test]
+    fn plan_request_matches_frontend_payload() {
+        let raw = r#"{
+            "instanceId": "abc",
+            "settings": {
+                "javaPath": "", "playerName": "deBangPlayer",
+                "minMemMb": 2048, "maxMemMb": 4096, "jvmArgs": ["-Xmx1G"]
+            }
+        }"#;
+        let p: FrontendPayload = serde_json::from_str(raw).expect("payload must deserialise");
+        assert_eq!(p.instance_id, "abc");
+        assert_eq!(p.settings.player_name, "deBangPlayer");
+        assert_eq!(p.settings.max_mem_mb, 4096);
+    }
 }

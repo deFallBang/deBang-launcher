@@ -302,7 +302,7 @@ mod tests {
         let (mc, loader, files) = parse_pack(&vj).unwrap();
         assert_eq!(mc, "1.20.1");
         assert_eq!(loader, "Fabric");
-        assert_eq!(files[0].url.as_deref().unwrap().starts_with("https://"), true);
+        assert!(files[0].url.as_deref().unwrap().starts_with("https://"));
         assert_eq!(files[0].size, Some(89214));
     }
 

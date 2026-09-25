@@ -31,7 +31,7 @@ fn main() {
     if std::env::args().nth(3).as_deref() == Some("--exec") {
         let java = std::env::args().nth(4).unwrap_or_else(|| "/usr/lib/jvm/java-21-openjdk/bin/java".into());
         let mem = std::env::args().nth(5).unwrap_or_else(|| "2048".into());
-        let mut a: Vec<String> = vec![format!("-Xms512M"), format!("-Xmx{}M", mem)];
+        let mut a: Vec<String> = vec!["-Xms512M".to_string(), format!("-Xmx{}M", mem)];
         a.extend(p.jvm.iter().cloned());
         if let Some(cp) = &p.classpath {
             a.push("-cp".into());
@@ -47,6 +47,7 @@ fn main() {
             .unwrap();
         std::thread::sleep(std::time::Duration::from_secs(22));
         let _ = child.kill();
+        let _ = child.wait();
         println!("EXEC DONE (game process was alive for 22s)");
         return;
     }

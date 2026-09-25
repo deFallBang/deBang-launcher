@@ -1,4 +1,5 @@
 pub mod instances;
+pub mod jvm;
 pub mod java;
 mod launch;
 pub mod modpack;
@@ -109,6 +110,8 @@ pub fn run() {
             instances::download_mod,
             instances::import_run_file,
             instances::import_background,
+            instances::update_instance_settings,
+            launch::instance_launch_plan,
             modpack::install_modpack,
             launch::launch_instance,
             launch::stop_instance,

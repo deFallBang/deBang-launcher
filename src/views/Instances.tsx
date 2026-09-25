@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Boxes, Check, Download, FolderOpen, PackageOpen, Plus, Trash2, X } from "lucide-react";
+import { AlertTriangle, Boxes, Check, Download, FolderOpen, Network, PackageOpen, Plus, Settings2, Trash2, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, type McVersion } from "../lib/api";
 import { useApp } from "../state/app";
 import { Skeleton } from "../components/ui";
+import { InstanceSettings } from "../components/InstanceSettings";
 
 const LOADERS = ["Vanilla", "Fabric", "Forge", "NeoForge"] as const;
 
@@ -16,6 +17,7 @@ export function Instances() {
   const [loader, setLoader] = useState<(typeof LOADERS)[number]>("Vanilla");
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const [versionsError, setVersionsError] = useState(false);
 
   useEffect(() => {
@@ -259,8 +261,17 @@ export function Instances() {
                     </span>
                   )}
                 </div>
-                <div className="text-[11.5px] opacity-55">
-                  {ins.modCount} модов · {ins.hasRunScript ? "есть run.sh" : "авто-бутстрап"}
+                <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] opacity-55">
+                  <span>
+                    {ins.modCount} модов · {ins.hasRunScript ? "есть run.sh" : "авто-бутстрап"}
+                  </span>
+                  {ins.config.proxy && ins.config.proxy.kind !== "None" && (
+                    <span className="badge badge-accent flex items-center gap-1 !py-0 !text-[10px]">
+                      <Network size={9} /> {ins.config.proxy.kind.toLowerCase()}
+                    </span>
+                  )}
+                  {ins.config.autoGc && <span className="badge !py-0 !text-[10px]">авто-GC</span>}
+                  {ins.config.autoMem && <span className="badge !py-0 !text-[10px]">авто-RAM</span>}
                 </div>
                 <div className="font-mono-console truncate text-[10.5px] opacity-40">{ins.dir}</div>
                 <div className="mt-auto flex gap-2">
@@ -269,6 +280,14 @@ export function Instances() {
                     onClick={() => patch({ selectedInstance: ins.config.id })}
                   >
                     {active ? "Выбран" : "Выбрать"}
+                  </button>
+                  <button
+                    className="btn"
+                    title="Настройки профиля: авто-GC, авто-память, прокси"
+                    aria-label={`Настройки профиля ${ins.config.name}`}
+                    onClick={() => setEditing(ins.config.id)}
+                  >
+                    <Settings2 size={14} />
                   </button>
                   <button
                     className="btn"
@@ -294,6 +313,18 @@ export function Instances() {
           })}
         </div>
       )}
+      {editing &&
+        (() => {
+          const target = instances.find((i) => i.config.id === editing);
+          return target ? (
+            <InstanceSettings
+              ins={target}
+              onClose={() => setEditing(null)}
+              onSaved={() => void refreshInstances()}
+            />
+          ) : null;
+        })()}
+
       <p className="flex items-center gap-1.5 text-[11px] opacity-40">
         <FolderOpen size={12} /> Vanilla, Fabric и NeoForge скачиваются и запускаются автоматически; для классического Forge — импорт run.sh.
       </p>

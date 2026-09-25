@@ -12,6 +12,16 @@ export interface JavaInstall {
   source: string;
 }
 
+export type ProxyKind = "None" | "Socks5" | "Http";
+
+export interface ProxyConfig {
+  kind: ProxyKind;
+  host: string;
+  port: number;
+  login: string;
+  password: string;
+}
+
 export interface InstanceConfig {
   id: string;
   name: string;
@@ -19,6 +29,22 @@ export interface InstanceConfig {
   loader: string;
   created: string;
   uuid: string;
+  /** per-instance proxy (absent in configs written by older versions) */
+  proxy?: ProxyConfig;
+  autoGc?: boolean;
+  autoMem?: boolean;
+}
+
+export interface LaunchPlan {
+  javaMajor: number;
+  minMemMb: number;
+  maxMemMb: number;
+  autoGc: boolean;
+  autoMem: boolean;
+  autoGcApplied: boolean;
+  gcFlags: string[];
+  proxyEnabled: boolean;
+  notes: string[];
 }
 
 export interface InstanceInfo {
@@ -93,6 +119,12 @@ export const api = {
   importRunFile: (instanceId: string, src: string) =>
     invoke<string>("import_run_file", { instanceId, src }),
   importBackground: (src: string) => invoke<string>("import_background", { src }),
+  updateInstanceSettings: (
+    instanceId: string,
+    p: { proxy?: ProxyConfig; autoGc?: boolean; autoMem?: boolean },
+  ) => invoke<InstanceInfo>("update_instance_settings", { instanceId, ...p }),
+  instanceLaunchPlan: (instanceId: string, settings: LaunchSettings) =>
+    invoke<LaunchPlan>("instance_launch_plan", { instanceId, settings }),
   installModpack: (url: string, filename: string, name: string) =>
     invoke<string>("install_modpack", { url, filename, name }),
   launch: (instanceId: string, settings: LaunchSettings) =>
