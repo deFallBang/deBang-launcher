@@ -274,7 +274,7 @@ pub async fn install_pack(
             total,
             extracted,
             if loader == "Forge" {
-                "Внимание: авто-бутстрап есть для Vanilla/Fabric/NeoForge — для классического Forge-пака импортируйте run.sh."
+                "Авто-бутстрап поддерживает Vanilla/Fabric/NeoForge/Forge 1.13+ — для остальных импортируйте run-скрипт."
             } else {
                 "Инстанс готов к запуску по Play."
             }

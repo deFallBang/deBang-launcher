@@ -291,8 +291,8 @@ export function Instances() {
                   </button>
                   <button
                     className="btn"
-                    title="Импортировать run.sh / jar в инстанс"
-                    aria-label={`Импортировать run.sh в ${ins.config.name}`}
+                    title="Импортировать run-скрипт или jar в инстанс"
+                    aria-label={`Импортировать run-скрипт в ${ins.config.name}`}
                     disabled={busyId === ins.config.id}
                     onClick={() => void importRun(ins.config.id)}
                   >
@@ -326,7 +326,7 @@ export function Instances() {
         })()}
 
       <p className="flex items-center gap-1.5 text-[11px] opacity-40">
-        <FolderOpen size={12} /> Vanilla, Fabric и NeoForge скачиваются и запускаются автоматически; для классического Forge — импорт run.sh.
+        <FolderOpen size={12} /> Vanilla, Fabric, NeoForge и Forge 1.13+ ставятся и запускаются автоматически. Для очень старых сборок (Forge ≤ 1.12) можно импортировать run-скрипт вручную.
       </p>
     </div>
   );

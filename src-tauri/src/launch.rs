@@ -155,6 +155,42 @@ pub fn instance_launch_plan(
     })
 }
 
+/// An imported run script (optional): `run.bat`/`run.cmd` on Windows,
+/// `run.sh` elsewhere. Returns `None` when the instance has no script, in
+/// which case the normal automatic bootstrap is used.
+struct RunScript {
+    program: String,
+    args: Vec<String>,
+    name: String,
+}
+
+fn run_script(dir: &std::path::Path) -> Option<RunScript> {
+    let mut names: Vec<&str> = vec!["run.sh"];
+    if cfg!(windows) {
+        names = vec!["run.bat", "run.cmd", "run.sh"];
+    }
+    for n in names {
+        let p = dir.join(n);
+        if p.exists() {
+            let is_batch = cfg!(windows) && (n.ends_with(".bat") || n.ends_with(".cmd"));
+            return Some(if is_batch {
+                RunScript {
+                    program: "cmd".into(),
+                    args: vec!["/C".into(), p.to_string_lossy().to_string()],
+                    name: n.to_string(),
+                }
+            } else {
+                RunScript {
+                    program: "/bin/bash".into(),
+                    args: vec![p.to_string_lossy().to_string()],
+                    name: n.to_string(),
+                }
+            });
+        }
+    }
+    None
+}
+
 fn pick_java(preferred: &str, major: u32) -> Result<String, String> {
     let installs = java::detect_java();
     if !preferred.is_empty() {
@@ -200,7 +236,6 @@ pub async fn launch_instance(
         cfg.uuid = pseudo_uuid(&instance_id);
     }
 
-    let run_sh = dir.join("run.sh");
     let manual_jar = ["minecraft.jar", "server.jar"]
         .into_iter()
         .map(|j| dir.join(j))
@@ -235,35 +270,20 @@ pub async fn launch_instance(
         a.push("-jar".into());
         a.push(jar.to_string_lossy().to_string());
         (settings.java_path.clone(), a)
-    } else if run_sh.exists() {
+    } else if let Some(script) = run_script(&dir) {
+        // A run script is only used when the user actually imported one; the
+        // automatic bootstrap below works on Linux, Windows and macOS.
         if cfg.auto_gc || cfg.auto_mem || !cfg.proxy.java_args().is_empty() {
             emit(
                 &app,
-                "│ run.sh запускается скриптом: авто-GC, авто-память и прокси из профиля НЕ применяются"
-                    .to_string(),
+                format!(
+                    "│ {} запускается скриптом: авто-GC, авто-память и прокси из профиля НЕ применяются",
+                    script.name
+                ),
                 "launcher",
             );
         }
-        (
-            "/bin/bash".into(),
-            vec![run_sh.to_string_lossy().to_string()],
-        )
-    } else if cfg!(windows) {
-        let batch = ["run.bat", "run.cmd"]
-            .into_iter()
-            .map(|b| dir.join(b))
-            .find(|p| p.exists());
-        if let Some(batch) = batch {
-            (
-                "cmd".into(),
-                vec![
-                    "/C".into(),
-                    batch.to_string_lossy().to_string(),
-                ],
-            )
-        } else {
-            return Err("В инстансе нет ни run.sh, ни run.bat/cmd — импортируйте run-скрипт".into());
-        }
+        (script.program, script.args)
     } else {
         // ------- real bootstrap -------
         emit(

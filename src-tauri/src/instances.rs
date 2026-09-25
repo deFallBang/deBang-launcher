@@ -491,7 +491,7 @@ pub fn import_run_file(instance_id: String, src: String) -> Result<String, Strin
         name.as_str(),
         "minecraft.jar" | "server.jar" | "run.sh" | "run.bat" | "run.cmd"
     ) {
-        return Err("Разрешены только minecraft.jar, server.jar, run.sh, run.bat или run.cmd".into());
+        return Err("Разрешены только minecraft.jar, server.jar, run.sh, run.bat или run.cmd (для очень старых сборок)".into());
     }
     let dir = instance_dir(&instance_id)?;
     if !dir.join("instance.json").exists() {

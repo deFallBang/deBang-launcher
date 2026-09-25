@@ -83,6 +83,11 @@
         <p>Первый публичный релиз: Vanilla/Fabric/NeoForge, инстансы, сборки Modrinth с выбором версии, консоль, темы, настраиваемый ник.</p>
       </description>
     </release>
+    <release version="1.3.1" date="2026-09-25">
+      <description>
+        <p>Исправлен запуск на Windows: автоматический бутстрап больше не требует run-скрипт. Добавлена автоматическая установка классического Forge 1.13+ (как у NeoForge).</p>
+      </description>
+    </release>
     <release version="1.3.0" date="2026-09-25">
       <description>
         <p>Умный подбор GC (Generational ZGC / G1GC), автовыделение памяти с учётом 70% ОЗУ и изолированный прокси инстанса (SOCKS5/HTTP).</p>

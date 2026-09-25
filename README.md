@@ -6,10 +6,10 @@ Tauri v2 (Rust) + React/TypeScript + Tailwind.
 ## Возможности
 
 - **Настоящий запуск**: скачивает клиент, библиотеки и ассеты Mojang, собирает
-  classpath и запускает Vanilla / Fabric / NeoForge (включая установку NeoForge
-  через официальный установщик) — без ручных танцев с путями.
+  classpath и запускает Vanilla / Fabric / NeoForge / Forge 1.13+ — установщики
+  NeoForge и Forge запускаются автоматически, вручную ничего докачивать не нужно.
 - **Инстансы**: изолированные профили с mods / resourcepacks / shaderpacks /
-  saves, импорт `run.sh` / `run.bat` / `minecraft.jar`.
+  saves; импорт `run.sh` / `run.bat` / `minecraft.jar` — только как запасной вариант.
 - **Сборки Modrinth**: установка `.mrpack` с **выбором версии сборки**.
 - **Каталог Modrinth**: моды, ресурспаки, шейдеры с учётом загрузчика и версии
   активного инстанса.

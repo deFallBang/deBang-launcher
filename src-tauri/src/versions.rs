@@ -465,9 +465,9 @@ where
     F: Fn(&str, u64, u64) + Send + Sync + 'static,
     L: Fn(String) + Send + Sync + 'static,
 {
-    if loader != "Vanilla" && loader != "Fabric" && loader != "NeoForge" {
+    if !matches!(loader, "Vanilla" | "Fabric" | "NeoForge" | "Forge") {
         return Err(format!(
-            "Автоматически ставим Vanilla, Fabric и NeoForge ({}: импортируйте run.sh в инстанс).",
+            "Автоматически ставим Vanilla, Fabric, NeoForge и Forge 1.13+ ({}: импортируйте run-скрипт в инстанс).",
             loader
         ));
     }
@@ -494,10 +494,10 @@ where
     report("version.json", 0, 1);
     let mut vj = fetch_json(&client, &vurl, &root.join(format!("versions/{}.json", mc))).await?;
     let is_legacy = vj.get("arguments").is_none();
-    if !matches!(loader, "Vanilla" | "Fabric" | "NeoForge") {
+    if !matches!(loader, "Vanilla" | "Fabric" | "NeoForge" | "Forge") {
         return Err(format!(
-            "загрузчик «{}»: автоматическая подготовка поддерживает Vanilla, Fabric и NeoForge (для {} импортируйте run.sh)",
-            loader, loader
+            "загрузчик «{}»: автоматическая подготовка поддерживает Vanilla, Fabric, NeoForge и Forge (1.13+) — для остальных импортируйте run-скрипт вручную",
+            loader
         ));
     }
 
@@ -518,6 +518,13 @@ where
         neoforge_universal = Some(nlibs.join(format!(
             "net/neoforged/neoforge/{nver}/neoforge-{nver}-universal.jar"
         )));
+    }
+
+    if loader == "Forge" {
+        let req = vj["javaVersion"]["majorVersion"].as_u64().unwrap_or(17) as u32;
+        let (profile, nroot) = crate::forge::ensure_forge(&log, &cancel, mc, req).await?;
+        merge_profile(&mut vj, &profile);
+        local_libs = Some(nroot.join("libraries"));
     }
 
     if loader == "Fabric" {

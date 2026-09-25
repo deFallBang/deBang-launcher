@@ -83,7 +83,7 @@ export function TitleBar() {
         <span className="text-[13px] font-semibold tracking-wide opacity-90">
           de<span style={{ color: "var(--accent)" }}>Bang</span> Launcher
         </span>
-        <span className="badge ml-1 hidden md:inline-block">V1.3</span>
+        <span className="badge ml-1 hidden md:inline-block">V1.3.1</span>
       </div>
       <div
         className="h-full flex-1"

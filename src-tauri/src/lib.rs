@@ -1,4 +1,5 @@
 pub mod instances;
+pub mod forge;
 pub mod jvm;
 pub mod java;
 mod launch;
