@@ -204,6 +204,7 @@ mod tests {
 
     fn cfg(version: &str) -> InstanceConfig {
         InstanceConfig {
+            forge_version: None,
             id: "t".into(),
             name: "t".into(),
             version: version.into(),

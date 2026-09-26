@@ -98,6 +98,11 @@ pub struct InstanceConfig {
     /// Let the launcher pick Xms/Xmx from the version and system RAM.
     #[serde(default)]
     pub auto_mem: bool,
+    /// Exact Forge build for this profile, e.g. `11.15.1.2318`. Packs pin it
+    /// (CurseForge manifest, `minecraftinstance.json`); legacy versions would
+    /// otherwise get a build that no longer exists on the maven.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forge_version: Option<String>,
 }
 
 fn yes() -> bool {
@@ -284,6 +289,17 @@ pub fn create_instance(
     version: String,
     loader: String,
 ) -> Result<InstanceInfo, String> {
+    create_instance_pinned(name, version, loader, None)
+}
+
+/// Same as [`create_instance`], but with the Forge build pinned by the pack
+/// (CurseForge manifest, `minecraftinstance.json`).
+pub fn create_instance_pinned(
+    name: String,
+    version: String,
+    loader: String,
+    forge_version: Option<String>,
+) -> Result<InstanceInfo, String> {
     let base = slugify(&name);
     if base.is_empty() {
         return Err("Некорректное имя версии".into());
@@ -307,6 +323,9 @@ pub fn create_instance(
         }
     }
     let cfg = InstanceConfig {
+        forge_version: forge_version
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty()),
         id: id.clone(),
         name,
         version,
@@ -416,6 +435,44 @@ pub struct ModEntry {
 /// Disabled mods keep their name and get this suffix: Minecraft loads
 /// only `*.jar`, so the mod simply stops being seen.
 const DISABLED_SUFFIX: &str = ".disabled";
+
+/// Forge build pinned for a version: `instance.json` first, then a Twitch /
+/// CurseForge `minecraftinstance.json` dropped into the folder.
+pub fn pinned_forge_version(dir: &std::path::Path) -> Option<String> {
+    if let Ok(raw) = fs::read_to_string(dir.join("instance.json")) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+            if let Some(f) = v["forgeVersion"].as_str() {
+                if !f.trim().is_empty() {
+                    return Some(f.trim().to_string());
+                }
+            }
+        }
+    }
+    let raw = fs::read_to_string(dir.join("minecraftinstance.json")).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    parse_intended_version(v["IntendedVersion"].as_str()?).map(|(_, forge)| forge)
+}
+
+/// Twitch / CurseForge `IntendedVersion` -> (Minecraft, Forge build).
+///
+/// Handles both spellings found in the wild:
+/// `1.8.9-forge1.8.9-11.15.1.2318` (repeat) and `1.12.2-forge14.23.5.2859`.
+pub fn parse_intended_version(intended: &str) -> Option<(String, String)> {
+    let s = intended.trim();
+    let idx = s.to_lowercase().find("forge")?;
+    let mc = s[..idx].trim().trim_end_matches('-').to_string();
+    let mut build = s[idx + 5..].trim().to_string();
+    if let Some(rest) = build.strip_prefix(&format!("{}-", mc)) {
+        build = rest.to_string();
+    }
+    if let Some(rest) = build.strip_suffix(&format!("-{}", mc)) {
+        build = rest.to_string();
+    }
+    if mc.is_empty() || build.is_empty() {
+        return None;
+    }
+    Some((mc, build))
+}
 
 fn mods_dir(id: &str) -> Result<PathBuf, String> {
     let dir = instance_dir(id)?.join("mods");
@@ -739,6 +796,48 @@ mod mods_tests {
         )
         .unwrap();
         inst
+    }
+
+    #[test]
+    fn intended_version_split_for_twitch_packs() {
+        assert_eq!(
+            parse_intended_version("1.8.9-forge1.8.9-11.15.1.2318"),
+            Some(("1.8.9".into(), "11.15.1.2318".into()))
+        );
+        assert_eq!(
+            parse_intended_version("1.12.2-forge1.12.2-14.23.5.2859"),
+            Some(("1.12.2".into(), "14.23.5.2859".into()))
+        );
+        assert_eq!(parse_intended_version("1.20.1"), None);
+        assert_eq!(parse_intended_version(""), None);
+    }
+
+    #[test]
+    fn pinned_forge_prefers_instance_json() {
+        let root = instances_root().join("debang-forge-pin-test");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("minecraftinstance.json"),
+            r#"{"IntendedVersion":"1.8.9-forge1.8.9-11.15.1.2318"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            pinned_forge_version(&root).as_deref(),
+            Some("11.15.1.2318"),
+            "minecraftinstance.json задаёт версию Forge"
+        );
+        std::fs::write(
+            root.join("instance.json"),
+            r#"{"id":"x","name":"x","version":"1.8.9","loader":"Forge","created":"x","forgeVersion":"11.15.1.2300"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            pinned_forge_version(&root).as_deref(),
+            Some("11.15.1.2300"),
+            "instance.json важнее minecraftinstance.json"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

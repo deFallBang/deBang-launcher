@@ -244,6 +244,9 @@ pub async fn curseforge_download_file(
 pub struct ParsedManifest {
     pub mc_version: String,
     pub loader: String,
+    /// Exact Forge build, e.g. `11.15.1.2318` — pinned so the launcher never
+    /// swaps the pack onto a different Forge.
+    pub forge_version: Option<String>,
     pub file_count: usize,
 }
 
@@ -274,6 +277,15 @@ pub fn parse_manifest(v: &Value) -> Result<ParsedManifest, String> {
         other => other,
     }
     .to_string();
+    // `forge-11.15.1.2318` / `neoforge-20.4.190` / `fabric-0.15.11`
+    let forge_version = if loader == "Forge" {
+        loader_id
+            .split_once('-')
+            .map(|(_, build)| build.to_string())
+            .filter(|b| !b.is_empty() && b.chars().next().is_some_and(|c| c.is_ascii_digit()))
+    } else {
+        None
+    };
     let file_count = v["files"]
         .as_array()
         .map(|a| a.len())
@@ -284,6 +296,7 @@ pub fn parse_manifest(v: &Value) -> Result<ParsedManifest, String> {
     Ok(ParsedManifest {
         mc_version,
         loader,
+        forge_version,
         file_count,
     })
 }
@@ -345,10 +358,11 @@ pub async fn install_modpack(
     let info = parse_manifest(&v)?;
 
     let clean = name.split(['-', '_', '.']).next().unwrap_or(&name).to_string();
-    let inst = crate::instances::create_instance(
+    let inst = crate::instances::create_instance_pinned(
         if clean.is_empty() { name.clone() } else { clean },
         info.mc_version.clone(),
         info.loader.clone(),
+        info.forge_version.clone(),
     )?;
     let inst_dir = PathBuf::from(&inst.dir);
     let total = file_entries(&v).len() as u64;
@@ -476,6 +490,18 @@ mod tests {
         assert_eq!(p.loader, "Forge");
         assert_eq!(p.file_count, 2);
         assert_eq!(file_entries(&v).len(), 2);
+    }
+
+    #[test]
+    fn pins_legacy_forge_build() {
+        let raw = r#"{
+            "minecraft": {"version": "1.8.9", "modLoaders": [{"id": "forge-11.15.1.2318", "primary": true}]},
+            "files": [{"projectID": 1, "fileID": 2}]
+        }"#;
+        let p = parse_manifest(&serde_json::from_str(raw).unwrap()).unwrap();
+        assert_eq!(p.mc_version, "1.8.9");
+        assert_eq!(p.loader, "Forge");
+        assert_eq!(p.forge_version.as_deref(), Some("11.15.1.2318"));
     }
 
     #[test]

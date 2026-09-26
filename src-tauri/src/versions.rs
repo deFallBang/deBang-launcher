@@ -392,6 +392,8 @@ fn extract_natives(jar: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// `Ok(None)` means a natives-only library (`jinput-platform` and friends have
+/// no main jar at all — Mojang's own launcher only unpacks the natives jar).
 async fn ensure_lib(
     client: &reqwest::Client,
     name: &str,
@@ -399,7 +401,16 @@ async fn ensure_lib(
     local_libs: Option<&Path>,
     lib_dir: &Path,
     cancel: Option<&watch::Receiver<bool>>,
-) -> Result<PathBuf, String> {
+) -> Result<Option<PathBuf>, String> {
+    let has_artifact = lib
+        .get("downloads")
+        .and_then(|d| d.get("artifact"))
+        .map(|a| !a.is_null())
+        .unwrap_or(false);
+    if !has_artifact && lib.get("natives").map(|n| !n.is_null()).unwrap_or(false) {
+        return Ok(None);
+    }
+
     if let Some(a) = lib
         .get("downloads")
         .and_then(|d| d.get("artifact"))
@@ -423,24 +434,24 @@ async fn ensure_lib(
         if let Some(loc) = local_libs {
             let cand = loc.join(&rel);
             if cand.exists() {
-                return Ok(cand);
+                return Ok(Some(cand));
             }
         }
         let target = lib_dir.join(&rel);
         download_file(client, &url, &target, size, cancel).await?;
-        return Ok(target);
+        return Ok(Some(target));
     }
     let (g, a, v) = coords(name).ok_or(format!("malformed lib: {}", name))?;
     let rel = format!("{}/{}/{}/{}-{}.jar", g, a, v, a, v); // maven layout
     if let Some(loc) = local_libs {
         let cand = loc.join(&rel);
         if cand.exists() {
-            return Ok(cand);
+            return Ok(Some(cand));
         }
     }
     let target = lib_jar_path(lib_dir, name, None);
     if target.exists() {
-        return Ok(target);
+        return Ok(Some(target));
     }
     let mut bases: Vec<String> = Vec::new();
     if let Some(b) = lib.get("url").and_then(|v| v.as_str()) {
@@ -450,11 +461,25 @@ async fn ensure_lib(
     bases.push("https://libraries.minecraft.net".into());
     bases.push("https://repo1.maven.org/maven2".into());
     let mut last = String::from("нет mirrors");
-    for b in bases {
+    for b in &bases {
         let url = format!("{}/{}", b, rel);
         match download_file(client, &url, &target, None, cancel).await {
-            Ok(()) => return Ok(target),
+            Ok(()) => return Ok(Some(target)),
             Err(e) => last = e,
+        }
+        // Legacy Forge publishes the mod jar as `<artifact>-universal.jar`, so
+        // `net.minecraftforge:forge:1.8.9-…` has no file at the plain path.
+        if name.starts_with("net.minecraftforge:forge:") {
+            let uni = rel.replace(".jar", "-universal.jar");
+            let uni_target = lib_dir.join(&uni);
+            if let Some(dir) = uni_target.parent() {
+                let _ = fs::create_dir_all(dir);
+            }
+            let url = format!("{}/{}", b, uni);
+            match download_file(client, &url, &uni_target, None, cancel).await {
+                Ok(()) => return Ok(Some(uni_target)),
+                Err(e) => last = e,
+            }
         }
     }
     Err(format!("библиотека {} недоступна ({})", name, last))
@@ -516,7 +541,9 @@ where
     let mut local_libs: Option<PathBuf> = None;
     let mut neoforge_universal: Option<PathBuf> = None;
     if loader == "NeoForge" {
-        let req = vj["javaVersion"]["majorVersion"].as_u64().unwrap_or(17) as u32;
+        let req = vj["javaVersion"]["majorVersion"]
+            .as_u64()
+            .unwrap_or(if is_legacy { 8 } else { 17 }) as u32;
         let (profile, nroot) =
             crate::neoforge::ensure_neoforge(&log, &cancel, mc, req).await?;
         let nver = profile["id"]
@@ -533,8 +560,17 @@ where
     }
 
     if loader == "Forge" {
-        let req = vj["javaVersion"]["majorVersion"].as_u64().unwrap_or(17) as u32;
-        let (profile, nroot) = crate::forge::ensure_forge(&log, &cancel, mc, req).await?;
+        // Legacy version.json (1.8.9 and older) has no `javaVersion`: Forge of
+        // that era only runs on Java 8, and picking 17 makes the installer and
+        // the game fail with confusing class version errors.
+        let req = vj["javaVersion"]["majorVersion"]
+            .as_u64()
+            .unwrap_or(if is_legacy { 8 } else { 17 }) as u32;
+        // Packs pin the exact Forge build (CurseForge manifest,
+        // minecraftinstance.json) — never silently upgrade a 1.8.9 pack.
+        let pinned = crate::instances::pinned_forge_version(inst_dir);
+        let (profile, nroot) =
+            crate::forge::ensure_forge(&log, &cancel, mc, req, pinned.as_deref()).await?;
         merge_profile(&mut vj, &profile);
         local_libs = Some(nroot.join("libraries"));
     }
@@ -595,8 +631,11 @@ where
         }
         let name = lib["name"].as_str().ok_or("library без name")?;
         let dl = lib.get("downloads").filter(|v| !v.is_null());
-        let target = ensure_lib(&client, name, lib, local_libs.as_deref(), &lib_dir, cancel.as_ref()).await?;
-        classpath.push(target);
+        if let Some(lib_path) =
+            ensure_lib(&client, name, lib, local_libs.as_deref(), &lib_dir, cancel.as_ref()).await?
+        {
+            classpath.push(lib_path);
+        }
 
         // natives for the current OS
         let natives_key = match mojang_os() {
@@ -698,7 +737,19 @@ where
     let total = objects.len() as u64;
     let done = Arc::new(std::sync::atomic::AtomicU64::new(0));
     report("assets", 0, total);
+    // Create the shard directories up front: doing it from 24 parallel tasks
+    // races on mkdir and used to abort the whole preparation with ENOENT.
+    let mut shards = std::collections::HashSet::new();
+    for (_, hash) in &objects {
+        if hash.len() >= 2 {
+            shards.insert(hash[..2].to_string());
+        }
+    }
+    for shard in &shards {
+        let _ = fs::create_dir_all(assets_root.join(format!("objects/{}", shard)));
+    }
     let mut set = tokio::task::JoinSet::new();
+    let (mut failed, mut last_err) = (0u64, String::new());
     for (_, hash) in objects {
         if cancelled(&cancel) {
             set.abort_all();
@@ -726,23 +777,28 @@ where
             }
             r
         });
+        // A single missing sound or translation must not block the launch —
+        // Mojang's own launcher warns and continues.
         while set.len() >= 24 {
             if let Some(Ok(Err(e))) = set.join_next().await {
-                set.abort_all();
-                while set.join_next().await.is_some() {}
-                if cancelled(&cancel) {
-                    return Err("подготовка отменена".into());
-                }
-                return Err(format!("ассет не скачан: {}", e));
+                failed += 1;
+                last_err = e;
             }
         }
     }
     while let Some(joined) = set.join_next().await {
         if let Ok(Err(e)) = joined {
-            if !cancelled(&cancel) {
-                return Err(format!("ассет не скачан: {}", e));
-            }
-            return Err("подготовка отменена".into());
+            failed += 1;
+            last_err = e;
+        }
+    }
+    if failed > 0 {
+        log(format!(
+            "⚠ ассетов не скачано {} из {} (последняя ошибка: {})",
+            failed, total, last_err
+        ));
+        if failed * 2 > total.max(1) {
+            return Err(format!("ассеты не скачаны ({} из {})", failed, total));
         }
     }
     if cancelled(&cancel) {
@@ -818,7 +874,10 @@ where
         game = raw_game.iter().map(|a| substitute(a, &map)).collect();
     } else if let Some(legacy) = vj["minecraftArguments"].as_str() {
         needs_cp_flag = true;
-        jvm = Vec::new();
+        // Pre-1.13 profiles have no ${natives_directory} placeholder, so the
+        // launcher has to point the JVM at the unpacked natives itself —
+        // otherwise LWJGL fails with "no lwjgl64 in java.library.path".
+        jvm = vec![format!("-Djava.library.path={}", natives_dir.to_string_lossy())];
         game = legacy
             .split_whitespace()
             .map(|a| substitute(a, &map))
@@ -846,6 +905,13 @@ fn merge_profile(vj: &mut Value, profile: &Value) {
     }
     if let Some(mc) = profile.get("mainClass").and_then(|v| v.as_str()) {
         vj["mainClass"] = Value::String(mc.to_string());
+    }
+    // Legacy loaders (Forge 1.8.9 and older) keep the whole command line in
+    // `minecraftArguments`, including `--tweakClass ...FMLTweaker`. Without it
+    // the obfuscated client jar is loaded as vanilla and the game dies with
+    // ClassNotFoundException: net.minecraft.client.Minecraft.
+    if let Some(ma) = profile.get("minecraftArguments").and_then(|v| v.as_str()) {
+        vj["minecraftArguments"] = Value::String(ma.to_string());
     }
     if let Some(pa) = profile.get("arguments").and_then(|v| v.as_object()) {
         if let Some(va) = vj.get_mut("arguments").and_then(|v| v.as_object_mut()) {

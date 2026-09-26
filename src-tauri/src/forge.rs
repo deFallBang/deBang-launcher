@@ -12,6 +12,183 @@ use tokio::sync::watch;
 
 const MAVEN: &str = "https://maven.minecraftforge.net/net/minecraftforge/forge";
 
+/// Reads the finished client profile out of an old Forge installer jar
+/// (`install_profile.json` -> `versionInfo`) and caches it like a normal
+/// install. Every library it lists is still downloadable, so the game runs
+/// without ForgeGradle ever being executed.
+async fn legacy_profile<F>(
+    log: &F,
+    cancel: &Option<watch::Receiver<bool>>,
+    mc: &str,
+    pinned: Option<&str>,
+) -> Result<(Value, PathBuf), String>
+where
+    F: Fn(String),
+{
+    if cancelled(cancel) {
+        return Err("подготовка отменена".into());
+    }
+    let root = data_root().join("forge").join(mc);
+    fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    let marker = root.join(".installed-profile");
+    if let Ok(raw) = fs::read_to_string(&marker) {
+        if let Ok(v) = serde_json::from_str::<Value>(&raw) {
+            log(format!("◆ профиль Forge для MC {} уже собран (кэш)", mc));
+            return Ok((v, root));
+        }
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("deBang-Launcher/0.1")
+        .build()
+        .map_err(|e| e.to_string())?;
+    // Legacy coordinates repeat the MC version: 1.8.9-11.15.1.2318-1.8.9
+    let build = pinned
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(String::from)
+        .unwrap_or_default();
+    let ver = if build.is_empty() {
+        resolve_legacy_build(&client, mc).await?
+    } else if build.starts_with(&format!("{}-", mc)) {
+        build.clone()
+    } else {
+        format!("{}-{}", mc, build)
+    };
+    log(format!(
+        "◆ старая ветка Forge: профиль беру из установщика {} (без ForgeGradle)",
+        ver
+    ));
+    // Legacy artifacts are published twice: `<ver>-installer.jar` and
+    // `forge-<ver>-installer.jar`. Try both, keep whichever exists.
+    let jar = root.join(format!("forge-{}-installer.jar", ver));
+    if !jar.exists() {
+        let mut last = String::from("нет установщика");
+        let mut ok = false;
+        for name in [format!("forge-{}-installer.jar", ver), format!("{}-installer.jar", ver)] {
+            match download_file(
+                &client,
+                &format!("{}/{}/{}", MAVEN, ver, name),
+                &jar,
+                None,
+                cancel.as_ref(),
+            )
+            .await
+            {
+                Ok(()) => {
+                    ok = true;
+                    break;
+                }
+                Err(e) => last = e,
+            }
+        }
+        if !ok {
+            return Err(format!("установщик Forge {} недоступен ({})", ver, last));
+        }
+    }
+
+    let mut profile = read_version_info(&jar, &ver)?;
+    // Legacy rule: `clientreq: false` marks a server-only library.
+    if let Some(libs) = profile.get_mut("libraries").and_then(|l| l.as_array_mut()) {
+        libs.retain(|l| l["clientreq"].as_bool() != Some(false));
+    }
+    profile.insert("id".into(), Value::String(ver.clone()));
+    let profile = Value::Object(profile);
+    fs::write(
+        &marker,
+        serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let vdir = root.join("versions").join(&ver);
+    fs::create_dir_all(&vdir).map_err(|e| e.to_string())?;
+    fs::write(
+        vdir.join(format!("{}.json", ver)),
+        serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    Ok((profile, root))
+}
+
+/// `install_profile.json` -> `versionInfo`, i.e. the client profile the old
+/// installer would have written into `versions/`.
+fn read_version_info(jar: &std::path::Path, ver: &str) -> Result<serde_json::Map<String, Value>, String> {
+    let data = fs::read(jar).map_err(|e| e.to_string())?;
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(data)).map_err(|e| e.to_string())?;
+    let mut raw = String::new();
+    {
+        let mut entry = archive
+            .by_name("install_profile.json")
+            .map_err(|_| format!("в установщике Forge {} нет install_profile.json", ver))?;
+        use std::io::Read;
+        entry.read_to_string(&mut raw).map_err(|e| e.to_string())?;
+    }
+    let profile: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    profile["versionInfo"]
+        .as_object()
+        .cloned()
+        .ok_or_else(|| format!("в install_profile.json Forge {} нет versionInfo", ver))
+}
+
+/// Newest stable build of a legacy MC version, e.g.
+/// `1.8.9-11.15.1.2318-1.8.9`.
+async fn resolve_legacy_build(client: &reqwest::Client, mc: &str) -> Result<String, String> {
+    let xml = client
+        .get(format!("{}/maven-metadata.xml", MAVEN))
+        .send()
+        .await
+        .map_err(|e| format!("maven.minecraftforge.net: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("maven.minecraftforge.net HTTP {}", e))?
+        .text()
+        .await
+        .map_err(|e| e.to_string())?;
+    let build = latest_legacy_build(&xml, mc)
+        .ok_or_else(|| format!("Forge для MC {} не найден на maven.minecraftforge.net", mc))?;
+    Ok(build)
+}
+
+/// `1.8.9` -> `[1, 8, 9]`, `1.20.1` -> `[1, 20, 1]`.
+fn mc_nums(mc: &str) -> Vec<u32> {
+    mc.split('.').filter_map(|x| x.parse().ok()).collect()
+}
+
+/// Same as [`latest_forge_version`], but for the legacy naming where the maven
+/// coordinate ends with the MC version again: `1.8.9-11.15.1.2318-1.8.9`.
+pub fn latest_legacy_build(xml: &str, mc: &str) -> Option<String> {
+    let mut best: Option<(Vec<u32>, String)> = None;
+    let prefix = format!("{}-", mc);
+    for seg in xml.split("<version>").skip(1) {
+        let v = seg.split("</version>").next().unwrap_or("").trim();
+        if !v.starts_with(&prefix) {
+            continue;
+        }
+        // Legacy coordinates repeat the MC version: 1.8.9-11.15.1.2318-1.8.9
+        let build = v[prefix.len()..].trim_end_matches(&format!("-{}", mc));
+        if build.is_empty() || !build.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            continue;
+        }
+        let nums: Vec<u32> = build.split('.').filter_map(|x| x.parse().ok()).collect();
+        if nums.is_empty() {
+            continue;
+        }
+        if best.as_ref().map(|b| nums > b.0).unwrap_or(true) {
+            best = Some((nums, v.to_string()));
+        }
+    }
+    best.map(|(_, v)| v)
+}
+
+/// Forge of that era can no longer be installed automatically: the installer's
+/// own maven artifacts (scala-xml 1.0.2 and friends) were removed from Forge
+/// maven, and the Java 8 TLS stack times out talking to the current endpoints,
+/// so `--installClient` ends with an empty `libraries/` and no profile.
+fn legacy_forge_unsupported(mc: &str) -> bool {
+    let n = mc_nums(mc);
+    // 1.12.2 is the oldest version whose installer still resolves and whose
+    // artifacts are all online; everything below it is dead.
+    n < vec![1, 12, 2]
+}
+
 /// Latest stable Forge version for `mc`, e.g. `1.20.1-47.4.0`.
 pub fn latest_forge_version(xml: &str, mc: &str) -> Option<(Vec<u32>, String)> {
     let mut best: Option<(Vec<u32>, String)> = None;
@@ -48,6 +225,7 @@ pub async fn ensure_forge<F>(
     cancel: &Option<watch::Receiver<bool>>,
     mc: &str,
     req_java: u32,
+    pinned: Option<&str>,
 ) -> Result<(Value, PathBuf), String>
 where
     F: Fn(String),
@@ -67,6 +245,15 @@ where
         }
     }
 
+    // Forge of 1.8.9 and older cannot be *installed* any more: the installer
+    // unpacks Scala/ForgeGradle jars that were removed from the maven, and its
+    // Java 8 TLS stack times out against the current endpoints. It can still be
+    // *prepared*: the installer jar still carries the finished client profile,
+    // so we read it and download the libraries ourselves.
+    if legacy_forge_unsupported(mc) {
+        return legacy_profile(log, cancel, mc, pinned).await;
+    }
+
     let client = reqwest::Client::builder()
         .user_agent("deBang-Launcher/0.1")
         .build()
@@ -81,9 +268,22 @@ where
         .text()
         .await
         .map_err(|e| e.to_string())?;
-    let ver = latest_forge_version(&xml, mc)
-        .ok_or_else(|| format!("Forge для MC {} не найден на maven.minecraftforge.net", mc))?
-        .1;
+    let ver = match pinned.map(str::trim).filter(|p| !p.is_empty()) {
+        // The pack pins the build: accept both `11.15.1.2318` and the full
+        // maven coordinate.
+        Some(build) => {
+            let full = if build.starts_with(&format!("{}-", mc)) {
+                build.to_string()
+            } else {
+                format!("{}-{}", mc, build)
+            };
+            log(format!("◆ Forge {} для MC {} (зафиксирован сборкой)", full, mc));
+            full
+        }
+        None => latest_forge_version(&xml, mc)
+            .ok_or_else(|| format!("Forge для MC {} не найден на maven.minecraftforge.net", mc))?
+            .1,
+    };
     log(format!(
         "◆ Forge {} для MC {} — скачиваю установщик, он сам поставит библиотеки…",
         ver, mc
@@ -233,5 +433,61 @@ mod tests {
     #[test]
     fn no_build_for_unknown_mc() {
         assert!(latest_forge_version("<versions></versions>", "1.7.10").is_none());
+    }
+}
+
+#[cfg(test)]
+mod legacy_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_forge_is_gated_from_1_12_2() {
+        assert!(legacy_forge_unsupported("1.8.9"));
+        assert!(legacy_forge_unsupported("1.7.10"));
+        assert!(legacy_forge_unsupported("1.11.2"));
+        assert!(!legacy_forge_unsupported("1.12.2"));
+        assert!(!legacy_forge_unsupported("1.16.5"));
+        assert!(!legacy_forge_unsupported("1.20.1"));
+        assert!(!legacy_forge_unsupported("1.21.8"));
+    }
+
+    #[test]
+    fn latest_legacy_build_uses_double_mc_suffix() {
+        let xml = "<metadata><versioning><versions>\
+            <version>1.8.9-11.15.1.2318-1.8.9</version>\
+            <version>1.8.9-11.15.1.2318-1.8.9-src</version>\
+            <version>1.8.9-11.15.0.1804-1.8.9</version>\
+            <version>1.7.10-10.13.4.1614-1.7.10</version>\
+            <version>1.20.1-47.2.0</version>\
+            </versions></versioning></metadata>";
+        assert_eq!(
+            latest_legacy_build(xml, "1.8.9").as_deref(),
+            Some("1.8.9-11.15.1.2318-1.8.9")
+        );
+        assert_eq!(
+            latest_legacy_build(xml, "1.7.10").as_deref(),
+            Some("1.7.10-10.13.4.1614-1.7.10")
+        );
+        assert!(latest_legacy_build(xml, "1.6.4").is_none());
+    }
+
+    #[test]
+    fn mc_numbers_parse() {
+        assert_eq!(mc_nums("1.8.9"), vec![1, 8, 9]);
+        assert_eq!(mc_nums("1.20.1"), vec![1, 20, 1]);
+    }
+
+    #[test]
+    fn picks_latest_stable_forge() {
+        let xml = "<metadata><versioning><versions>\
+            <version>1.20.1-47.1.0</version>\
+            <version>1.20.1-47.2.0</version>\
+            <version>1.20.1-47.3.0-beta</version>\
+            <version>1.8.9-11.15.1.2318-1.8.9</version>\
+            </versions></versioning></metadata>";
+        let (nums, v) = latest_forge_version(xml, "1.20.1").unwrap();
+        assert_eq!(v, "1.20.1-47.2.0");
+        assert_eq!(nums, vec![47, 2, 0]);
+        assert!(latest_forge_version(xml, "1.7.10").is_none());
     }
 }
