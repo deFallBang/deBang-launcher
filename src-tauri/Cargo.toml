@@ -1,6 +1,6 @@
 [package]
 name = "debang-launcher"
-version = "1.3.3"
+version = "1.3.4"
 description = "Ultra-styled, deeply customizable Minecraft launcher (Vanilla, Fabric, NeoForge, modpacks)"
 authors = ["deFallBang"]
 license = "MIT"

@@ -232,25 +232,51 @@ fn run_script(dir: &std::path::Path) -> Option<RunScript> {
     None
 }
 
-fn pick_java(preferred: &str, major: u32) -> Result<String, String> {
-    let installs = java::detect_java();
-    if !preferred.is_empty() {
-        if let Some(j) = installs.iter().find(|j| j.path == preferred) {
-            if j.major >= major {
-                return Ok(preferred.to_string());
-            }
+/// Which Java major version to run a game with.
+///
+/// MC 1.8.9 and older (every legacy Forge profile) only work on **exactly**
+/// Java 8: a newer JVM dies at once with `UnsupportedClassVersionError` deep in
+/// FML, so the "≥ required" rule that is right for modern versions is exactly
+/// backwards there and must never apply to the user's preferred Java.
+fn choose_java_major(required: u32, preferred: Option<u32>, available: &[u32]) -> Option<u32> {
+    if required == 8 {
+        if preferred == Some(8) && available.contains(&8) {
+            return Some(8);
+        }
+        return available.contains(&8).then_some(8);
+    }
+    if let Some(p) = preferred {
+        if p >= required && available.contains(&p) {
+            return Some(p);
         }
     }
-    if let Some(j) = installs.iter().find(|j| j.major == major) {
-        return Ok(j.path.clone());
+    if available.contains(&required) {
+        return Some(required);
     }
-    if let Some(j) = installs.iter().filter(|j| j.major > major).min_by_key(|j| j.major) {
-        return Ok(j.path.clone());
+    available.iter().copied().filter(|m| *m > required).min()
+}
+
+fn pick_java(preferred: &str, major: u32) -> Result<String, String> {
+    let installs = java::detect_java();
+    let available: Vec<u32> = installs.iter().map(|j| j.major).collect();
+    let preferred_major = java_major_of(preferred);
+    let chosen = choose_java_major(major, preferred_major, &available)
+        .ok_or_else(|| match major {
+            8 => "Для этой версии нужна Java 8 — установите: sudo pacman -S --needed jre8-openjdk"
+                .to_string(),
+            _ => format!(
+                "Не найдена Java {} (нужно ≥ {}). Установите: sudo pacman -S --needed jre-openjdk",
+                major, major
+            ),
+        })?;
+    if !preferred.is_empty() && preferred_major == Some(chosen) {
+        return Ok(preferred.to_string());
     }
-    Err(format!(
-        "Не найдена Java {} (нужно ≥ {}). Установите: sudo pacman -S --needed jre-openjdk",
-        major, major
-    ))
+    installs
+        .iter()
+        .find(|j| j.major == chosen)
+        .map(|j| j.path.clone())
+        .ok_or_else(|| format!("не удалось найти исполняемый файл Java {}", chosen))
 }
 
 #[tauri::command]
@@ -288,6 +314,7 @@ pub async fn launch_instance(
         .flat_map(|a| a.split_whitespace().map(String::from))
         .collect();
 
+    let mut need_java: u32 = 8;
     let (program, args) = if let Some(jar) = manual_jar {
         let java_major = java_major_of(&settings.java_path).unwrap_or(0);
         let plan = crate::jvm::build_plan(
@@ -311,7 +338,6 @@ pub async fn launch_instance(
             a.push(format!("-Djava.io.tmpdir={}", t.to_string_lossy()));
         }
         a.extend(diagnostics_args(&dir));
-        a.extend(jvm_user);
         a.push("-jar".into());
         a.push(jar.to_string_lossy().to_string());
         (settings.java_path.clone(), a)
@@ -391,6 +417,7 @@ pub async fn launch_instance(
             }
         };
         let java = pick_java(&settings.java_path, prepared.java_major)?;
+        need_java = prepared.java_major;
         let plan = crate::jvm::build_plan(
             &cfg,
             prepared.java_major,
@@ -417,7 +444,18 @@ pub async fn launch_instance(
             );
         }
         a.extend(diagnostics_args(&dir));
-        a.extend(jvm_user);
+        // Ask the JVM which of the configured flags it can parse: a modern
+        // preset on Java 8 aborts the JVM before the game starts.
+        let (clean_args, dropped_args) =
+            crate::jvm::sanitize_args(&java, &plan.jvm_args, prepared.java_major);
+        for f in &dropped_args {
+            emit(
+                &app,
+                format!("│ Java {} не поддерживает {} — флаг пропущен", prepared.java_major, f),
+                "launcher",
+            );
+        }
+        a.extend(clean_args);
         a.extend(prepared.jvm.iter().cloned());
         if let Some(cp) = &prepared.classpath {
             a.push("-cp".into());
@@ -500,6 +538,7 @@ pub async fn launch_instance(
 
     let app2 = app.clone();
     let id2 = instance_id.clone();
+    let started = std::time::Instant::now();
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_millis(400)).await;
@@ -525,6 +564,36 @@ pub async fn launch_instance(
                 }
             };
             if let Some(code) = code {
+                // A game that dies in the first seconds almost never has a
+                // readable console, so say what happened instead of silently
+                // resetting the UI back to "Запуск".
+                let secs = started.elapsed().as_secs();
+                if let Some(c) = code {
+                    if c != 0 {
+                        log_line(
+                            Some(&app2),
+                            format!(
+                                "└ игра завершилась с кодом {} через {} с — последние строки в консоли",
+                                c, secs
+                            ),
+                        );
+                        if need_java == 8 {
+                            log_line(
+                                Some(&app2),
+                                "└ для этой версии обязательна Java 8: проверь в Настройках → Java"
+                                    .into(),
+                            );
+                        }
+                    } else if secs < 10 {
+                        log_line(
+                            Some(&app2),
+                            format!(
+                                "└ игра закрылась через {} с — версия Java, скорее всего, несовместима",
+                                secs
+                            ),
+                        );
+                    }
+                }
                 emit_status(&app2, &id2, code);
                 break;
             }
@@ -637,5 +706,36 @@ mod tmp_and_diag_tests {
         assert!(err.contains("hs_err_pid"));
         assert!(err.contains(&dir.to_string_lossy().to_string()));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod java_choice_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_requires_java_8_even_when_newer_preferred() {
+        let available = [8, 17, 21, 26];
+        assert_eq!(choose_java_major(8, Some(21), &available), Some(8));
+        assert_eq!(choose_java_major(8, Some(26), &available), Some(8));
+        assert_eq!(choose_java_major(8, Some(8), &available), Some(8));
+    }
+
+    #[test]
+    fn legacy_without_java_8_fails_instead_of_using_newer() {
+        assert_eq!(choose_java_major(8, Some(21), &[17, 21, 26]), None);
+        assert_eq!(choose_java_major(8, None, &[17]), None);
+    }
+
+    #[test]
+    fn modern_prefers_configured_java_then_exact_then_next() {
+        let available = [8, 17, 21];
+        assert_eq!(choose_java_major(21, Some(21), &available), Some(21));
+        assert_eq!(choose_java_major(17, Some(21), &available), Some(21));
+        assert_eq!(choose_java_major(17, Some(8), &available), Some(17));
+        assert_eq!(choose_java_major(21, None, &available), Some(21));
+        assert_eq!(choose_java_major(25, Some(21), &available), None);
+        assert_eq!(choose_java_major(25, Some(21), &[8, 17, 21, 26]), Some(26));
+        assert_eq!(choose_java_major(17, Some(21), &[8]), None);
     }
 }

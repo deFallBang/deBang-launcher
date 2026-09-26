@@ -109,7 +109,133 @@ pub struct LaunchPlan {
     pub auto_gc_applied: bool,
     pub gc_flags: Vec<String>,
     pub proxy_args: Vec<String>,
+    /// `user_args` after dropping flags the target JVM cannot parse.
+    pub jvm_args: Vec<String>,
     pub notes: Vec<String>,
+}
+
+/// Flags that only exist on Java 9+. Passing them to Java 8 makes the JVM
+/// refuse to start ("Unrecognized VM option") and the game never opens, so a
+/// modern preset (Aikar/ZGC/Shenandoah) must be trimmed for legacy versions.
+const JAVA9_PLUS_FLAGS: &[&str] = &[
+    "--add-opens",
+    "--add-exports",
+    "--add-modules",
+    "--add-reads",
+    "--illegal-access",
+    "--module-path",
+    "--patch-module",
+    "--enable-preview",
+    "-XX:+UseZGC",
+    "-XX:+ZGenerational",
+    "-XX:-ZGenerational",
+    "-XX:+ZCompileThreads",
+    "-XX:+UseShenandoah",
+    "-XX:+UseEpsilonGC",
+    "-XX:+UseNUMA",
+    "-XX:+PerfDisableSharedMem",
+    "-XX:+SegmentedCodeCache",
+    "-XX:MaxRAMPercentage",
+    "-XX:InitialRAMPercentage",
+    "-XX:+UseContainerSupport",
+    "-XX:+ParallelRefProc",
+    "-XX:-ParallelRefProc",
+    "-Dos.name",
+];
+
+/// Picks the flag the JVM complained about. Two shapes exist:
+/// `Unrecognized VM option 'ParallelRefProc'` -> `-XX:+ParallelRefProc`
+/// and `Unrecognized option: -XX:+UseZGC` -> the flag as written.
+pub fn parse_rejected_flag(text: &str) -> Option<String> {
+    if let Some(rest) = text.split("Unrecognized VM option").nth(1) {
+        let quote = rest.split('\'').nth(1)?;
+        let name = quote.split_whitespace().next()?.trim();
+        if name.is_empty() {
+            return None;
+        }
+        return Some(format!("-XX:+{}", name));
+    }
+    let rest = text.split("Unrecognized option:").nth(1)?;
+    let flag = rest.split_whitespace().next()?.trim();
+    if flag.is_empty() {
+        return None;
+    }
+    Some(flag.to_string())
+}
+
+/// Asks the JVM itself whether it accepts `args`: a flag from a modern preset
+/// (Aikar, ZGC) kills a Java 8 launch instantly with "Unrecognized VM option",
+/// and no static list stays complete across all presets.
+pub fn sanitize_args(java: &str, args: &[String], java_major: u32) -> (Vec<String>, Vec<String>) {
+    if args.is_empty() || java_major >= 9 {
+        return (args.to_vec(), Vec::new());
+    }
+    let mut kept = args.to_vec();
+    let mut dropped: Vec<String> = Vec::new();
+    for _ in 0..12 {
+        let out = match std::process::Command::new(java)
+            .args(&kept)
+            .arg("-version")
+            .output()
+        {
+            Ok(o) => o,
+            Err(_) => break,
+        };
+        if out.status.success() {
+            break;
+        }
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        match parse_rejected_flag(&text) {
+            Some(flag) => match kept.iter().position(|a| *a == flag) {
+                Some(i) => {
+                    kept.remove(i);
+                    dropped.push(flag);
+                }
+                None => break,
+            },
+            None => break,
+        }
+    }
+    (kept, dropped)
+}
+
+/// Splits JVM flags into (usable, rejected) for a given Java major version.
+pub fn filter_args_for_java(args: &[String], java_major: u32) -> (Vec<String>, Vec<String>) {
+    if java_major >= 9 {
+        return (args.to_vec(), Vec::new());
+    }
+    // `--add-opens java.base/java.lang=ALL-UNNAMED` is two argv entries, so the
+    // value has to go as well.
+    const PAIRED: &[&str] = &[
+        "--add-opens",
+        "--add-exports",
+        "--add-modules",
+        "--add-reads",
+        "--patch-module",
+    ];
+    let mut kept = Vec::new();
+    let mut dropped = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let a = &args[i];
+        let flag = a.split('=').next().unwrap_or(a);
+        let is_paired = PAIRED.contains(&flag);
+        if JAVA9_PLUS_FLAGS.contains(&flag) {
+            dropped.push(a.clone());
+            if is_paired && args.get(i + 1).is_some_and(|next| !next.starts_with('-')) {
+                dropped.push(args[i + 1].clone());
+                i += 1;
+            }
+        } else {
+            kept.push(a.clone());
+        }
+        i += 1;
+    }
+    (kept, dropped)
 }
 
 /// Builds the JVM part of the command line. `user_args` are the flags coming
@@ -167,6 +293,15 @@ pub fn build_plan(
         notes.push(format!("прокси: {}", cfg.proxy.describe()));
     }
 
+    let (jvm_args, dropped) = filter_args_for_java(user_args, java_major);
+    if !dropped.is_empty() {
+        notes.push(format!(
+            "устаревшие для Java {} флаги отброшены: {}",
+            java_major,
+            dropped.join(" ")
+        ));
+    }
+
     LaunchPlan {
         java_major,
         min_mem_mb,
@@ -174,6 +309,7 @@ pub fn build_plan(
         auto_gc_applied,
         gc_flags,
         proxy_args,
+        jvm_args,
         notes,
     }
 }
@@ -215,6 +351,42 @@ mod tests {
             auto_gc: true,
             auto_mem: false,
         }
+    }
+
+    #[test]
+    fn parses_jvm_complaint() {
+        let t = "Unrecognized VM option 'ParallelRefProc'\nError: Could not create the Java Virtual Machine.";
+        assert_eq!(parse_rejected_flag(t).as_deref(), Some("-XX:+ParallelRefProc"));
+        let t2 = "Unrecognized option: -XX:+UseZGC";
+        assert_eq!(parse_rejected_flag(t2).as_deref(), Some("-XX:+UseZGC"));
+        assert_eq!(parse_rejected_flag("Something else entirely"), None);
+        assert_eq!(
+            parse_rejected_flag("Unrecognized VM option 'Broken' extra").as_deref(),
+            Some("-XX:+Broken")
+        );
+    }
+
+    #[test]
+    fn java9_flags_are_dropped_for_legacy_java() {
+        let args: Vec<String> = [
+            "-Xmx4G",
+            "-XX:+UseZGC",
+            "-XX:+ZGenerational",
+            "--add-opens",
+            "java.base/java.lang=ALL-UNNAMED",
+            "-XX:+UseG1GC",
+            "-XX:MaxRAMPercentage=70",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let (kept, dropped) = filter_args_for_java(&args, 8);
+        assert_eq!(kept, vec!["-Xmx4G", "-XX:+UseG1GC"]);
+        assert_eq!(dropped.len(), 5);
+        // Java 17+ keeps everything untouched
+        let (kept, dropped) = filter_args_for_java(&args, 21);
+        assert_eq!(kept.len(), 7);
+        assert!(dropped.is_empty());
     }
 
     #[test]
