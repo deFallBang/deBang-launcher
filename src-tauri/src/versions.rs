@@ -69,10 +69,7 @@ pub fn mojang_os() -> &'static str {
 }
 
 fn client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .user_agent("deBang-Launcher/0.1")
-        .build()
-        .map_err(|e| e.to_string())
+    Ok(http_client("deBang-Launcher/1.3"))
 }
 
 /// Cached metadata older than this is refetched, so new Minecraft/Fabric
@@ -111,6 +108,23 @@ async fn fetch_json(client: &reqwest::Client, url: &str, cache: &Path) -> Result
     }
     fs::write(cache, serde_json::to_string(&v).unwrap()).ok();
     Ok(v)
+}
+
+/// HTTP client for everything the launcher downloads.
+///
+/// Without an explicit timeout a single stalled TCP connection hangs the whole
+/// preparation forever: the UI keeps showing "Запуск" and nothing happens,
+/// because `resp.chunk().await` never resolves. `read_timeout` bounds the gap
+/// between chunks (so big files still download), `connect_timeout` bounds the
+/// handshake.
+pub fn http_client(user_agent: &str) -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(user_agent)
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .read_timeout(std::time::Duration::from_secs(45))
+        .pool_max_idle_per_host(8)
+        .build()
+        .unwrap_or_default()
 }
 
 pub(crate) async fn download_file(
@@ -178,14 +192,33 @@ async fn download_inner(
     }
     let mut f = tokio::fs::File::create(tmp).await.map_err(|e| e.to_string())?;
     let mut written: u64 = 0;
-    while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
-        written += chunk.len() as u64;
-        if written > 512 * 1024 * 1024 {
-            drop(f);
-            let _ = tokio::fs::remove_file(tmp).await;
-            return Err(format!("{}: файл подозрительно большой (>512 МБ)", url));
+    let mut stalls = 0u32;
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                stalls = 0;
+                written += chunk.len() as u64;
+                if written > 512 * 1024 * 1024 {
+                    drop(f);
+                    let _ = tokio::fs::remove_file(tmp).await;
+                    return Err(format!("{}: файл подозрительно большой (>512 МБ)", url));
+                }
+                f.write_all(&chunk).await.map_err(|e| e.to_string())?;
+            }
+            Ok(None) => break,
+            Err(e) => {
+                // A flaky connection must not fail the whole launch: retry the
+                // same range twice before giving up.
+                stalls += 1;
+                if stalls > 2 {
+                    return Err(format!("{}: {}", url, e));
+                }
+                if written > 0 {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(800 * stalls as u64)).await;
+            }
         }
-        f.write_all(&chunk).await.map_err(|e| e.to_string())?;
     }
     f.flush().await.ok();
     drop(f);

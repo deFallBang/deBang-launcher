@@ -51,7 +51,40 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
+/// Console lines only lived in the webview, so a failed launch left no trace
+/// outside the app. Everything is mirrored into `launcher.log` (capped) — that
+/// file is the only way to diagnose a launch that dies before Minecraft writes
+/// its own log.
+fn log_file() -> std::path::PathBuf {
+    crate::versions::data_root().join("launcher.log")
+}
+
+fn append_log(line: &str, stream: &str) {
+    use std::io::Write;
+    let path = log_file();
+    // Keep the file bounded: truncate to the last ~1 MB when it grows too big.
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > 2 * 1024 * 1024 {
+            if let Ok(data) = std::fs::read(&path) {
+                let cut = data.len().saturating_sub(1024 * 1024);
+                let _ = std::fs::write(&path, &data[cut..]);
+            }
+        }
+    }
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = writeln!(f, "[{:.3}][{}] {}", now_ms() as f64 / 1000.0, stream, line);
+    }
+}
+
 pub(crate) fn emit(app: &AppHandle, line: String, stream: &str) {
+    append_log(&line, stream);
     let _ = app.emit(
         "game://log",
         LogEvent {
@@ -196,13 +229,20 @@ fn instance_tmp(dir: &std::path::Path) -> Option<PathBuf> {
 }
 
 /// JVM flags that keep crash diagnostics inside the instance directory.
-fn diagnostics_args(dir: &std::path::Path) -> Vec<String> {
+fn diagnostics_args(dir: &std::path::Path, java_major: u32) -> Vec<String> {
     let logs = dir.join("logs");
     let _ = std::fs::create_dir_all(&logs);
-    vec![
-        "-XX:-CreateCoredumpOnCrash".to_string(),
-        format!("-XX:ErrorFile={}", logs.join("hs_err_pid%p.log").to_string_lossy()),
-    ]
+    let mut out = Vec::new();
+    // `CreateCoredumpOnCrash` only exists since Java 9; on Java 8 the JVM
+    // refuses to start with "Unrecognized VM option 'CreateCoredumpOnCrash'".
+    if java_major >= 9 {
+        out.push("-XX:-CreateCoredumpOnCrash".to_string());
+    }
+    out.push(format!(
+        "-XX:ErrorFile={}",
+        logs.join("hs_err_pid%p.log").to_string_lossy()
+    ));
+    out
 }
 
 fn run_script(dir: &std::path::Path) -> Option<RunScript> {
@@ -332,12 +372,11 @@ pub async fn launch_instance(
             format!("-Xms{}M", plan.min_mem_mb),
             format!("-Xmx{}M", plan.max_mem_mb),
         ];
-        a.extend(plan.gc_flags.iter().cloned());
         a.extend(plan.proxy_args.iter().cloned());
         if let Some(t) = instance_tmp(&dir) {
             a.push(format!("-Djava.io.tmpdir={}", t.to_string_lossy()));
         }
-        a.extend(diagnostics_args(&dir));
+        a.extend(diagnostics_args(&dir, 8));
         a.push("-jar".into());
         a.push(jar.to_string_lossy().to_string());
         (settings.java_path.clone(), a)
@@ -368,7 +407,10 @@ pub async fn launch_instance(
         let app_p = app.clone();
         let app_log = app.clone();
         let last_log = std::sync::Arc::new(std::sync::Mutex::new((String::new(), 0u64)));
-        let prepared = crate::versions::prepare(
+        // A watchdog: a download that never finishes must not keep the button
+        // in the "Запуск" state forever. Individual requests have their own
+        // timeouts; this is the last resort for a stuck phase.
+        let prepared_fut = crate::versions::prepare(
             move |phase, done, total| {
                 let _ = app_p.emit(
                     "prep://progress",
@@ -399,8 +441,24 @@ pub async fn launch_instance(
             &cfg.uuid,
             if settings.player_name.is_empty() { "deBangPlayer" } else { &settings.player_name },
             Some(cancel_rx),
+        );
+        let prepared = match tokio::time::timeout(
+            std::time::Duration::from_secs(20 * 60),
+            prepared_fut,
         )
-        .await;
+        .await
+        {
+            Ok(r) => r,
+            Err(_) => {
+                emit(
+                    &app,
+                    "└ ОШИБКА подготовки: истекло 20 минут — загрузка не завершилась, смотри launcher.log"
+                        .to_string(),
+                    "launcher",
+                );
+                return Err("подготовка не завершилась за 20 минут (подробности в launcher.log)".into());
+            }
+        };
         let _ = app.emit(
             "prep://progress",
             PrepEvent {
@@ -443,11 +501,14 @@ pub async fn launch_instance(
                 "launcher",
             );
         }
-        a.extend(diagnostics_args(&dir));
-        // Ask the JVM which of the configured flags it can parse: a modern
-        // preset on Java 8 aborts the JVM before the game starts.
+        // Ask the JVM which of the flags it can parse — both the automatic GC
+        // flags and the user's preset. One bad flag (`-XX:+MaxGCPauseMillis=200`
+        // shipped in 1.3.0) aborts the JVM before the game ever starts.
+        let mut wanted = diagnostics_args(&dir, prepared.java_major);
+        wanted.extend(plan.gc_flags.clone());
+        wanted.extend(plan.jvm_args.iter().cloned());
         let (clean_args, dropped_args) =
-            crate::jvm::sanitize_args(&java, &plan.jvm_args, prepared.java_major);
+            crate::jvm::sanitize_args(&java, &wanted, prepared.java_major);
         for f in &dropped_args {
             emit(
                 &app,
@@ -479,6 +540,7 @@ pub async fn launch_instance(
             format!("$ {} {}", java, crate::jvm::redact(&shown).join(" ")),
             "launcher",
         );
+        append_log(&format!("instance={} version={} loader={}", cfg.id, cfg.version, cfg.loader), "launch");
         emit(
             &app,
             format!(
@@ -614,7 +676,21 @@ where
 }
 
 fn is_running(state: &State<'_, LauncherState>) -> bool {
-    state.child.lock().map(|g| g.is_some()).unwrap_or(false)
+    let Ok(mut guard) = state.child.lock() else {
+        return false;
+    };
+    match guard.as_mut() {
+        // A process that already exited (crashed app, closed terminal, killed
+        // JVM) must not keep the launcher in the "running" state forever.
+        Some(child) => match child.try_wait() {
+            Ok(Some(_)) => {
+                guard.take();
+                false
+            }
+            _ => true,
+        },
+        None => false,
+    }
 }
 
 #[tauri::command]
@@ -697,7 +773,7 @@ mod tmp_and_diag_tests {
     fn diagnostics_go_to_instance_logs() {
         let dir = std::env::temp_dir().join("debang-diag-test-inst");
         let _ = std::fs::remove_dir_all(&dir);
-        let args = diagnostics_args(&dir);
+        let args = diagnostics_args(&dir, 21);
         assert!(args.iter().any(|a| a == "-XX:-CreateCoredumpOnCrash"));
         let err = args
             .iter()
@@ -706,6 +782,32 @@ mod tmp_and_diag_tests {
         assert!(err.contains("hs_err_pid"));
         assert!(err.contains(&dir.to_string_lossy().to_string()));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// Every flag the launcher adds itself must be accepted by the JVM it will
+/// start: one bad `-XX:` flag kills the game before the window appears. Runs
+/// against the installed Java 8 (skipped when it is not installed).
+#[test]
+fn own_flags_are_accepted_by_installed_java8() {
+    let Some(java) = crate::java::detect_java()
+        .into_iter()
+        .find(|j| j.major == 8)
+        .map(|j| j.path)
+    else {
+        return;
+    };
+    let dir = std::env::temp_dir().join("debang-flag-probe");
+    let mut flags = diagnostics_args(&dir, 8);
+    flags.extend(crate::jvm::auto_gc_flags(8, "1.8.9"));
+    for f in flags {
+        let ok = std::process::Command::new(&java)
+            .arg(&f)
+            .arg("-version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        assert!(ok, "Java 8 не принимает флаг {}", f);
     }
 }
 

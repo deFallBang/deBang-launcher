@@ -151,10 +151,7 @@ pub async fn install_pack(
         .collect();
     let pack_path = dl_dir.join(&safe);
 
-    let c = reqwest::Client::builder()
-        .user_agent("deBang-Launcher/0.1")
-        .build()
-        .map_err(|e| e.to_string())?;
+    let c = crate::versions::http_client("deBang-Launcher/1.3");
     report(app, "mrpack", 0, 2);
     if PathBuf::from(&url).exists() {
         fs::copy(&url, &pack_path).map_err(|e| e.to_string())?;

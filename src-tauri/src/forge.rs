@@ -38,10 +38,7 @@ where
         }
     }
 
-    let client = reqwest::Client::builder()
-        .user_agent("deBang-Launcher/0.1")
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::versions::http_client("deBang-Launcher/1.3");
     // Legacy coordinates repeat the MC version: 1.8.9-11.15.1.2318-1.8.9
     let build = pinned
         .map(str::trim)
@@ -254,10 +251,7 @@ where
         return legacy_profile(log, cancel, mc, pinned).await;
     }
 
-    let client = reqwest::Client::builder()
-        .user_agent("deBang-Launcher/0.1")
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::versions::http_client("deBang-Launcher/1.3");
     let xml = client
         .get(format!("{}/maven-metadata.xml", MAVEN))
         .send()

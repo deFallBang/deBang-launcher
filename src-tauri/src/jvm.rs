@@ -11,7 +11,7 @@ pub const ZGC_FLAGS: [&str; 2] = ["-XX:+UseZGC", "-XX:+ZGenerational"];
 pub const LEGACY_G1_FLAGS: [&str; 5] = [
     "-XX:+UseG1GC",
     "-XX:+ParallelRefProcEnabled",
-    "-XX:+MaxGCPauseMillis=200",
+    "-XX:MaxGCPauseMillis=200",
     "-XX:+UnlockExperimentalVMOptions",
     "-XX:+DisableExplicitGC",
 ];
@@ -166,8 +166,8 @@ pub fn parse_rejected_flag(text: &str) -> Option<String> {
 /// Asks the JVM itself whether it accepts `args`: a flag from a modern preset
 /// (Aikar, ZGC) kills a Java 8 launch instantly with "Unrecognized VM option",
 /// and no static list stays complete across all presets.
-pub fn sanitize_args(java: &str, args: &[String], java_major: u32) -> (Vec<String>, Vec<String>) {
-    if args.is_empty() || java_major >= 9 {
+pub fn sanitize_args(java: &str, args: &[String], _java_major: u32) -> (Vec<String>, Vec<String>) {
+    if args.is_empty() {
         return (args.to_vec(), Vec::new());
     }
     let mut kept = args.to_vec();
@@ -353,6 +353,25 @@ mod tests {
         }
     }
 
+    /// A value flag must never carry a `+`/`-` prefix: HotSpot answers
+    /// "Unexpected +/- setting in VM option" and refuses to start the JVM.
+    /// This is exactly the bug that broke every legacy launch in v1.3.0.
+    #[test]
+    fn gc_flags_have_no_bogus_prefix_on_value_flags() {
+        for f in ZGC_FLAGS
+            .iter()
+            .chain(LEGACY_G1_FLAGS.iter())
+            .chain(MID_G1_FLAGS.iter())
+        {
+            assert!(
+                !(f.starts_with("-XX:+") && f.contains('=')),
+                "{}: флаг со значением не должен начинаться с +",
+                f
+            );
+        }
+        assert!(LEGACY_G1_FLAGS.contains(&"-XX:MaxGCPauseMillis=200"));
+    }
+
     #[test]
     fn parses_jvm_complaint() {
         let t = "Unrecognized VM option 'ParallelRefProc'\nError: Could not create the Java Virtual Machine.";
@@ -383,7 +402,7 @@ mod tests {
         let (kept, dropped) = filter_args_for_java(&args, 8);
         assert_eq!(kept, vec!["-Xmx4G", "-XX:+UseG1GC"]);
         assert_eq!(dropped.len(), 5);
-        // Java 17+ keeps everything untouched
+        // Java 17+ keeps everything untouched by the static filter
         let (kept, dropped) = filter_args_for_java(&args, 21);
         assert_eq!(kept.len(), 7);
         assert!(dropped.is_empty());
@@ -408,7 +427,7 @@ mod tests {
         assert_eq!(auto_gc_flags(25, "1.20.4"), vec!["-XX:+UseG1GC", "-XX:+ParallelRefProcEnabled"]);
         assert!(auto_gc_flags(8, "1.12.2").contains(&"-XX:+UseG1GC".to_string()));
         assert!(auto_gc_flags(17, "1.8.9").contains(&"-XX:+UseG1GC".to_string()));
-        assert!(auto_gc_flags(8, "1.16.5").contains(&"-XX:+MaxGCPauseMillis=200".to_string()));
+        assert!(auto_gc_flags(8, "1.16.5").contains(&"-XX:MaxGCPauseMillis=200".to_string()));
         // Java 8 cannot run modern Minecraft — no modern flags
         assert!(auto_gc_flags(8, "1.21.1").is_empty());
     }

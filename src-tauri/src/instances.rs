@@ -383,10 +383,7 @@ pub async fn download_mod(
     let dir = instance_dir(&instance_id)?.join(&sub);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let target = dir.join(&safe_name);
-    let c = reqwest::Client::builder()
-        .user_agent("deBang-Launcher/0.1")
-        .build()
-        .map_err(|e| e.to_string())?;
+    let c = crate::versions::http_client("deBang-Launcher/1.3");
     crate::versions::download_file(&c, &url, &target, None, Some(&state.cancel.subscribe())).await?;
     Ok(target.to_string_lossy().to_string())
 }

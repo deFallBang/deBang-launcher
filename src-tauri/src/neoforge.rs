@@ -44,10 +44,7 @@ where
         _ => return Err(format!("непонятная версия Minecraft: {}", mc)),
     };
     let prefixes = [format!("{}.{}.", major, minor)];
-    let client = reqwest::Client::builder()
-        .user_agent("deBang-Launcher/0.1")
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::versions::http_client("deBang-Launcher/1.3");
     let xml = client
         .get("https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml")
         .send()

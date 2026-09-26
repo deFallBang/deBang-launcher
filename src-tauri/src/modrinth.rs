@@ -4,11 +4,7 @@ const MODRINTH: &str = "https://api.modrinth.com/v2";
 const MOJANG: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 
 fn client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .user_agent("deBang-Launcher/0.1")
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .map_err(|e| e.to_string())
+    Ok(crate::versions::http_client("deBang-Launcher/1.3"))
 }
 
 #[tauri::command]

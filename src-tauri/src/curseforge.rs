@@ -103,6 +103,8 @@ fn client(key: &str) -> Result<reqwest::Client, String> {
     }
     reqwest::Client::builder()
         .user_agent("deBang-Launcher/1.3")
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .read_timeout(std::time::Duration::from_secs(45))
         .default_headers({
             let mut m = reqwest::header::HeaderMap::new();
             m.insert(
