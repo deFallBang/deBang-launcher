@@ -35,6 +35,14 @@ export interface InstanceConfig {
   autoMem?: boolean;
 }
 
+export interface ModEntry {
+  file: string;
+  name: string;
+  size: number;
+  enabled: boolean;
+  broken: boolean;
+}
+
 export interface LaunchPlan {
   javaMajor: number;
   minMemMb: number;
@@ -52,6 +60,26 @@ export interface InstanceInfo {
   dir: string;
   modCount: number;
   hasRunScript: boolean;
+}
+
+export interface CfProject {
+  id: number;
+  name: string;
+  slug: string;
+  summary: string;
+  downloadCount: number;
+  logo?: { thumbnailUrl?: string; url?: string } | null;
+  links?: { websiteUrl?: string; sourceUrl?: string } | null;
+}
+
+export interface CfFile {
+  id: number;
+  displayName?: string;
+  fileName: string;
+  downloadCount: number;
+  gameVersions: string[];
+  releaseType: number;
+  fileDate: string;
 }
 
 export interface McVersion {
@@ -100,6 +128,30 @@ export const api = {
   modrinthVersions: (projectId: string, loaders: string, gameVersions: string) =>
     invoke<MrVersion[]>("modrinth_project_versions", { projectId, loaders, gameVersions }),
   mojangVersions: () => invoke<McVersion[]>("mojang_versions"),
+
+  // ---- CurseForge ----
+  cfKeyStatus: () =>
+    invoke<{ configured: boolean; masked: string; source: string }>("curseforge_key_status"),
+  cfKeySave: (key: string) =>
+    invoke<{ configured: boolean; masked: string; source: string }>("curseforge_key_save", { key }),
+  cfSearch: (args: {
+    key: string;
+    searchFilter: string;
+    classId: number;
+    gameVersion?: string | null;
+    page?: number;
+  }) => invoke<{ data: CfProject[] }>("curseforge_search", args),
+  cfFiles: (key: string, projectId: number) =>
+    invoke<{ data: CfFile[] }>("curseforge_files", { key, projectId }),
+  cfDownloadFile: (args: {
+    key: string;
+    instanceId: string;
+    fileId: number;
+    filename: string;
+    sub?: string | null;
+  }) => invoke<string>("curseforge_download_file", args),
+  cfInstallModpack: (key: string, fileId: number, name: string) =>
+    invoke<string>("curseforge_install_modpack", { key, fileId, name }),
   sysInfo: () =>
     invoke<{
       session: string;
@@ -125,6 +177,12 @@ export const api = {
   ) => invoke<InstanceInfo>("update_instance_settings", { instanceId, ...p }),
   instanceLaunchPlan: (instanceId: string, settings: LaunchSettings) =>
     invoke<LaunchPlan>("instance_launch_plan", { instanceId, settings }),
+  listInstanceMods: (instanceId: string) => invoke<ModEntry[]>("list_instance_mods", { instanceId }),
+  toggleInstanceMod: (instanceId: string, file: string, enable: boolean) =>
+    invoke<void>("toggle_instance_mod", { instanceId, file, enable }),
+  deleteInstanceMod: (instanceId: string, file: string) =>
+    invoke<void>("delete_instance_mod", { instanceId, file }),
+  openInstanceFolder: (instanceId: string) => invoke<void>("open_instance_folder", { instanceId }),
   installModpack: (url: string, filename: string, name: string) =>
     invoke<string>("install_modpack", { url, filename, name }),
   launch: (instanceId: string, settings: LaunchSettings) =>

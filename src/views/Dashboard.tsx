@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Coffee, Cpu, Download, Gauge, Play, Rocket, Square, TerminalSquare } from "lucide-react";
+import { Coffee, Cpu, Download, Play, Rocket, Square, TerminalSquare, User } from "lucide-react";
 import { api } from "../lib/api";
 import { isValidPlayerName, JVM_PRESETS, useApp } from "../state/app";
 
@@ -22,6 +22,7 @@ export function Dashboard({ go }: { go: (v: "console" | "instances" | "settings"
   const selected = instances.find((i) => i.config.id === settings.selectedInstance) ?? null;
 
   const usedPct = mem ? Math.min(100, ((mem.totalMb - mem.availableMb) / mem.totalMb) * 100) : 0;
+  const nameOk = isValidPlayerName(settings.playerName);
 
   async function onPlay() {
     if (status?.running) {
@@ -33,7 +34,7 @@ export function Dashboard({ go }: { go: (v: "console" | "instances" | "settings"
       return;
     }
     if (!selected) {
-      toast("Сначала создайте инстанс", "err");
+      toast("Сначала создайте версию", "err");
       go("instances");
       return;
     }
@@ -72,7 +73,7 @@ export function Dashboard({ go }: { go: (v: "console" | "instances" | "settings"
             {status?.running ? "Игра запущена" : "Готов к приключениям"}
           </div>
           <h1 className="mt-1 text-[40px] font-black leading-tight">
-            {selected ? selected.config.name : "Инстансы пока нет"}
+            {selected ? selected.config.name : "Версии пока нет"}
           </h1>
           {selected ? (
             <div className="mt-2 flex items-center justify-center gap-2 text-[13px] opacity-70">
@@ -82,7 +83,7 @@ export function Dashboard({ go }: { go: (v: "console" | "instances" | "settings"
             </div>
           ) : (
             <button className="btn btn-primary mt-3" onClick={() => go("instances")}>
-              <Rocket size={15} /> Создать первый инстанс
+              <Rocket size={15} /> Создать первую версию
             </button>
           )}
         </div>
@@ -164,22 +165,30 @@ export function Dashboard({ go }: { go: (v: "console" | "instances" | "settings"
 
       <div className="grid shrink-0 grid-cols-3 gap-4">
         <StatCard
-          icon={<Gauge size={17} />}
-          title="Системная память"
-          loading={!mem && !memFailed}
+          icon={<User size={17} />}
+          title="Ник в игре"
           body={
-            mem ? (
-              <>
-                <div className="gauge mb-2">
-                  <div style={{ width: `${usedPct}%` }} />
+            <div className="space-y-1.5">
+              <input
+                className={`inp font-mono-console !w-full !text-[12px] ${nameOk ? "" : "!border-[color:var(--danger)]"}`}
+                maxLength={16}
+                value={settings.playerName}
+                placeholder="deBangPlayer"
+                aria-label="Ник в игре"
+                onChange={(e) =>
+                  patch({ playerName: e.target.value.replace(/[^A-Za-z0-9_]/g, "") })
+                }
+              />
+              {nameOk ? (
+                <div className="text-[11px] opacity-60">
+                  {mem ? `${usedPct.toFixed(0)}% RAM занято · ` : ""}3–16 символов: A–Z, 0–9, _
                 </div>
-                <div className="text-[12px] opacity-70">
-                  занято {ramFmt(mem.totalMb - mem.availableMb)} из {ramFmt(mem.totalMb)} · свободно {ramFmt(mem.availableMb)}
+              ) : (
+                <div className="text-[11px]" style={{ color: "var(--danger)" }}>
+                  Ник должен быть 3–16 символов: A–Z, 0–9, _
                 </div>
-              </>
-            ) : memFailed ? (
-              <div className="text-[12px] opacity-70">Не удалось прочитать память системы</div>
-            ) : null
+              )}
+            </div>
           }
         />
         <StatCard

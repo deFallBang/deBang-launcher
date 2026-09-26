@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Boxes, Check, Download, FolderOpen, Network, PackageOpen, Plus, Settings2, Trash2, X } from "lucide-react";
+import { AlertTriangle, Boxes, Check, Download, FolderOpen, Network, Package, PackageOpen, Plus, Settings2, Trash2, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, type McVersion } from "../lib/api";
 import { useApp } from "../state/app";
 import { Skeleton } from "../components/ui";
 import { InstanceSettings } from "../components/InstanceSettings";
+import { InstanceMods } from "../components/InstanceMods";
 
 const LOADERS = ["Vanilla", "Fabric", "Forge", "NeoForge"] as const;
 
@@ -18,6 +19,7 @@ export function Instances() {
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  const [modsOf, setModsOf] = useState<string | null>(null);
   const [versionsError, setVersionsError] = useState(false);
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export function Instances() {
     setCreating(true);
     try {
       await api.createInstance(name.trim(), ver, loader);
-      toast(`Инстанс «${name}» создан`);
+      toast(`Версия «${name}» создана`);
       setShowCreate(false);
       setName("");
       await refreshInstances();
@@ -60,7 +62,7 @@ export function Instances() {
   }
 
   async function remove(id: string, name: string) {
-    if (!window.confirm(`Удалить инстанс «${name}»? Мир, моды и настройки будут стёрты безвозвратно.`)) {
+    if (!window.confirm(`Удалить версию «${name}»? Мир, моды и настройки будут стёрты безвозвратно.`)) {
       return;
     }
     if (status?.running && status.instanceId === id) {
@@ -70,7 +72,7 @@ export function Instances() {
     setBusyId(id);
     try {
       await api.deleteInstance(id);
-      toast("Инстанс удалён");
+      toast("Версия удалена");
       await refreshInstances();
     } catch (e) {
       toast(String(e), "err");
@@ -93,7 +95,7 @@ export function Instances() {
       const id = await api.installModpack(file, fn, fn.replace(/\.mrpack$/i, ""));
       await refreshInstances();
       patch({ selectedInstance: id });
-      toast(`Сборка установлена → инстанс «${id}»`);
+      toast(`Сборка установлена → версия «${id}»`);
     } catch (e) {
       toast(String(e), "err");
     }
@@ -119,7 +121,7 @@ export function Instances() {
     <div className="view-enter flex h-full flex-col gap-4 overflow-y-auto p-6 pt-3">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Инстансы</h2>
+          <h2 className="text-2xl font-bold">Версии</h2>
           <p className="text-[12.5px] opacity-55">
             Изолированные сборки в {sys ? `${sys.dataDir}/instances` : "каталоге данных лаунчера"}
           </p>
@@ -128,7 +130,7 @@ export function Instances() {
           <PackageOpen size={15} /> Установить .mrpack
         </button>
         <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-          <Plus size={15} /> Новый инстанс
+          <Plus size={15} /> Новая версия
         </button>
       </div>
 
@@ -210,7 +212,7 @@ export function Instances() {
       {instancesFailed ? (
         <div className="glass flex items-center gap-3 p-6 text-[13px]">
           <AlertTriangle size={18} style={{ color: "var(--danger)" }} />
-          Не удалось прочитать список инстансов.
+          Не удалось прочитать список версий.
           <button className="btn !py-1" onClick={() => void refreshInstances()}>
             Повторить
           </button>
@@ -233,7 +235,7 @@ export function Instances() {
         <div className="glass grid place-items-center gap-3 p-16 text-center opacity-80">
           <Boxes size={40} style={{ color: "var(--accent)" }} />
           <p className="text-[14px]">
-            Пока пусто. Создайте инстанс — каждый профиль получает изолированные
+            Пока пусто. Создайте версию — каждый профиль получает изолированные
             <br />
             mods / resourcepacks / shaderpacks / saves.
           </p>
@@ -283,6 +285,14 @@ export function Instances() {
                   </button>
                   <button
                     className="btn"
+                    title="Моды версии: список, включение и удаление"
+                    aria-label={`Моды версии ${ins.config.name}`}
+                    onClick={() => setModsOf(ins.config.id)}
+                  >
+                    <Package size={14} />
+                  </button>
+                  <button
+                    className="btn"
                     title="Настройки профиля: авто-GC, авто-память, прокси"
                     aria-label={`Настройки профиля ${ins.config.name}`}
                     onClick={() => setEditing(ins.config.id)}
@@ -291,7 +301,7 @@ export function Instances() {
                   </button>
                   <button
                     className="btn"
-                    title="Импортировать run-скрипт или jar в инстанс"
+                    title="Импортировать run-скрипт или jar в версию"
                     aria-label={`Импортировать run-скрипт в ${ins.config.name}`}
                     disabled={busyId === ins.config.id}
                     onClick={() => void importRun(ins.config.id)}
@@ -301,7 +311,7 @@ export function Instances() {
                   <button
                     className="btn btn-danger"
                     title="Удалить"
-                    aria-label={`Удалить инстанс ${ins.config.name}`}
+                    aria-label={`Удалить версию ${ins.config.name}`}
                     disabled={busyId === ins.config.id || (status?.running && status.instanceId === ins.config.id)}
                     onClick={() => void remove(ins.config.id, ins.config.name)}
                   >
@@ -321,6 +331,18 @@ export function Instances() {
               ins={target}
               onClose={() => setEditing(null)}
               onSaved={() => void refreshInstances()}
+            />
+          ) : null;
+        })()}
+
+      {modsOf &&
+        (() => {
+          const target = instances.find((i) => i.config.id === modsOf);
+          return target ? (
+            <InstanceMods
+              ins={target}
+              onClose={() => setModsOf(null)}
+              onChanged={() => void refreshInstances()}
             />
           ) : null;
         })()}

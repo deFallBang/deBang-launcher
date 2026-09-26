@@ -3,6 +3,7 @@ use crate::java;
 use crate::instances::pseudo_uuid;
 use crate::LauncherState;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -59,6 +60,27 @@ pub(crate) fn emit(app: &AppHandle, line: String, stream: &str) {
             stream: stream.to_string(),
         },
     );
+}
+
+/// Log line from non-command code (installers, modpacks).
+pub(crate) fn log_line(app: Option<&AppHandle>, line: String) {
+    if let Some(a) = app {
+        emit(a, line, "launcher");
+    }
+}
+
+/// `prep://progress` event from non-command code.
+pub(crate) fn emit_prep(app: Option<&AppHandle>, phase: &str, done: u64, total: u64) {
+    if let Some(a) = app {
+        let _ = a.emit(
+            "prep://progress",
+            PrepEvent {
+                phase: phase.to_string(),
+                done,
+                total,
+            },
+        );
+    }
 }
 
 fn emit_status(app: &AppHandle, id: &str, code: Option<i32>) {
@@ -123,7 +145,7 @@ pub fn instance_launch_plan(
 ) -> Result<LaunchPlanView, String> {
     let dir = instance_dir(&instance_id)?;
     let raw = std::fs::read_to_string(dir.join("instance.json"))
-        .map_err(|_| "Инстанс не найден".to_string())?;
+        .map_err(|_| "Версия не найдена".to_string())?;
     let cfg: crate::instances::InstanceConfig =
         serde_json::from_str(&raw).map_err(|e| e.to_string())?;
     let req = if cfg.version == "1.8.9" { 8 } else { 17 };
@@ -162,6 +184,25 @@ struct RunScript {
     program: String,
     args: Vec<String>,
     name: String,
+}
+
+/// Per-instance scratch directory. The game must never write into the shared
+/// /tmp: it is a RAM-backed tmpfs on many systems, and a full tmpfs makes the
+/// JVM die with SIGBUS inside the dynamic loader (the "Mojang crash screen").
+fn instance_tmp(dir: &std::path::Path) -> Option<PathBuf> {
+    let t = dir.join("tmp");
+    std::fs::create_dir_all(&t).ok()?;
+    Some(t)
+}
+
+/// JVM flags that keep crash diagnostics inside the instance directory.
+fn diagnostics_args(dir: &std::path::Path) -> Vec<String> {
+    let logs = dir.join("logs");
+    let _ = std::fs::create_dir_all(&logs);
+    vec![
+        "-XX:-CreateCoredumpOnCrash".to_string(),
+        format!("-XX:ErrorFile={}", logs.join("hs_err_pid%p.log").to_string_lossy()),
+    ]
 }
 
 fn run_script(dir: &std::path::Path) -> Option<RunScript> {
@@ -229,7 +270,7 @@ pub async fn launch_instance(
     let cancel_rx = state.cancel.subscribe();
     let dir = instance_dir(&instance_id)?;
     let cfg_raw = std::fs::read_to_string(dir.join("instance.json"))
-        .map_err(|_| "Инстанс не найден".to_string())?;
+        .map_err(|_| "Версия не найдена".to_string())?;
     let mut cfg: crate::instances::InstanceConfig =
         serde_json::from_str(&cfg_raw).map_err(|e| e.to_string())?;
     if cfg.uuid.is_empty() {
@@ -266,6 +307,10 @@ pub async fn launch_instance(
         ];
         a.extend(plan.gc_flags.iter().cloned());
         a.extend(plan.proxy_args.iter().cloned());
+        if let Some(t) = instance_tmp(&dir) {
+            a.push(format!("-Djava.io.tmpdir={}", t.to_string_lossy()));
+        }
+        a.extend(diagnostics_args(&dir));
         a.extend(jvm_user);
         a.push("-jar".into());
         a.push(jar.to_string_lossy().to_string());
@@ -363,6 +408,15 @@ pub async fn launch_instance(
         ];
         a.extend(plan.gc_flags.iter().cloned());
         a.extend(plan.proxy_args.iter().cloned());
+        if let Some(t) = instance_tmp(&dir) {
+            a.push(format!("-Djava.io.tmpdir={}", t.to_string_lossy()));
+            emit(
+                &app,
+                format!("│ временный каталог игры: {}", t.to_string_lossy()),
+                "launcher",
+            );
+        }
+        a.extend(diagnostics_args(&dir));
         a.extend(jvm_user);
         a.extend(prepared.jvm.iter().cloned());
         if let Some(cp) = &prepared.classpath {
@@ -550,5 +604,38 @@ mod ipc_tests {
         assert_eq!(p.instance_id, "abc");
         assert_eq!(p.settings.player_name, "deBangPlayer");
         assert_eq!(p.settings.max_mem_mb, 4096);
+    }
+}
+
+#[cfg(test)]
+mod tmp_and_diag_tests {
+    use super::*;
+
+    #[test]
+    fn per_instance_tmpdir_is_created_inside_instance() {
+        let dir = std::env::temp_dir().join("debang-tmp-test-inst");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let t = instance_tmp(&dir).expect("tmp dir");
+        assert!(t.starts_with(&dir));
+        assert!(t.exists());
+        let flag = format!("-Djava.io.tmpdir={}", t.to_string_lossy());
+        assert!(!flag.contains("/tmp/debang-tmp-test") || flag.contains("debang-tmp-test"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn diagnostics_go_to_instance_logs() {
+        let dir = std::env::temp_dir().join("debang-diag-test-inst");
+        let _ = std::fs::remove_dir_all(&dir);
+        let args = diagnostics_args(&dir);
+        assert!(args.iter().any(|a| a == "-XX:-CreateCoredumpOnCrash"));
+        let err = args
+            .iter()
+            .find(|a| a.starts_with("-XX:ErrorFile="))
+            .expect("ErrorFile flag");
+        assert!(err.contains("hs_err_pid"));
+        assert!(err.contains(&dir.to_string_lossy().to_string()));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

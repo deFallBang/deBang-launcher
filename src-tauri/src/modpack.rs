@@ -269,14 +269,14 @@ pub async fn install_pack(
     sys_log(
         app,
         format!(
-            "✔ сборка установлена: инстанс '{}', {} файлов + {} override-файлов. {}",
+            "✔ сборка установлена: версия '{}', {} файлов + {} override-файлов. {}",
             inst.config.name,
             total,
             extracted,
             if loader == "Forge" {
                 "Авто-бутстрап поддерживает Vanilla/Fabric/NeoForge/Forge 1.13+ — для остальных импортируйте run-скрипт."
             } else {
-                "Инстанс готов к запуску по Play."
+                "Версия готова к запуску по Play."
             }
         ),
     );

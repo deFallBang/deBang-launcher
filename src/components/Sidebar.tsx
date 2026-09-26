@@ -6,8 +6,8 @@ export type View = "dashboard" | "instances" | "catalog" | "console" | "settings
 
 const NAV: Array<{ id: View; label: string; icon: LucideIcon }> = [
   { id: "dashboard", label: "Играть", icon: Gamepad2 },
-  { id: "instances", label: "Инстансы", icon: Boxes },
-  { id: "catalog", label: "Моды Modrinth", icon: Globe2 },
+  { id: "instances", label: "Версии", icon: Boxes },
+  { id: "catalog", label: "Каталог", icon: Globe2 },
   { id: "console", label: "Консоль", icon: TerminalSquare },
   { id: "settings", label: "Настройки", icon: Settings2 },
 ];

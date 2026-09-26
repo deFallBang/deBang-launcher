@@ -1,4 +1,5 @@
 pub mod instances;
+pub mod curseforge;
 pub mod forge;
 pub mod jvm;
 pub mod java;
@@ -82,6 +83,17 @@ fn migrate_legacy_data() {
 }
 
 pub fn run() {
+    // A menu entry or a script may start us without a graphical session; say so
+    // clearly instead of panicking inside GTK with "Failed to initialize".
+    let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
+    let x11 = std::env::var_os("DISPLAY").is_some();
+    if !wayland && !x11 {
+        eprintln!(
+            "deBang Launcher: не найден WAYLAND_DISPLAY/DISPLAY — приложению нужна графическая сессия."
+        );
+        eprintln!("Подсказка: запускай через ярлык меню или из терминала внутри сессии Hyprland.");
+        std::process::exit(1);
+    }
     migrate_legacy_data();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -105,6 +117,13 @@ pub fn run() {
             modrinth::modrinth_search,
             modrinth::modrinth_project_versions,
             modrinth::mojang_versions,
+            curseforge::curseforge_key_status,
+            curseforge::curseforge_key_save,
+            curseforge::curseforge_search,
+            curseforge::curseforge_files,
+            curseforge::curseforge_download_url,
+            curseforge::curseforge_download_file,
+            curseforge::curseforge_install_modpack,
             instances::list_instances,
             instances::create_instance,
             instances::delete_instance,
@@ -112,6 +131,10 @@ pub fn run() {
             instances::import_run_file,
             instances::import_background,
             instances::update_instance_settings,
+            instances::list_instance_mods,
+            instances::toggle_instance_mod,
+            instances::delete_instance_mod,
+            instances::open_instance_folder,
             launch::instance_launch_plan,
             modpack::install_modpack,
             launch::launch_instance,

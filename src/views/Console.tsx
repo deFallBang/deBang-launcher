@@ -74,7 +74,7 @@ export function Console() {
           <div className="grid h-full place-items-center gap-2 opacity-50">
             <Radio size={26} style={{ color: "var(--accent)" }} />
             <p className="text-[12.5px]">
-              {logs.length === 0 ? "Логи появятся здесь после запуска инстанса" : "Нет строк по фильтру"}
+              {logs.length === 0 ? "Логи появятся здесь после запуска версии" : "Нет строк по фильтру"}
             </p>
           </div>
         ) : (

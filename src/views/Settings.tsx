@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Check, Coffee, Cpu, Image, Info, Palette, RotateCcw, Search, SlidersHorizontal, User } from "lucide-react";
+import { Check, Coffee, Cpu, Globe2, Image, Info, KeyRound, Palette, RotateCcw, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, type JavaInstall } from "../lib/api";
-import { isValidPlayerName, JVM_PRESETS, useApp } from "../state/app";
+import { JVM_PRESETS, useApp } from "../state/app";
 import { Slider } from "../components/ui";
 
 const ACCENTS = ["#cba6f7", "#89b4fa", "#a6e3a1", "#fab387", "#f5c2e7", "#88c0d0", "#38bdf8", "#f706cf", "#00f0ff", "#fbbf24"];
-type Tab = "appearance" | "java" | "jvm";
+type Tab = "appearance" | "java" | "jvm" | "curseforge";
 
 export function Settings() {
   const { settings, patch, presets, mem, toast, assembledArgs } = useApp();
@@ -14,6 +14,34 @@ export function Settings() {
   const [java, setJava] = useState<JavaInstall[] | null>(null);
   const [manualPath, setManualPath] = useState("");
   const [manualOk, setManualOk] = useState<string | null>(null);
+  const [cfKey, setCfKey] = useState("");
+  const [cfStatus, setCfStatus] = useState<{ configured: boolean; masked: string; source: string } | null>(null);
+  const [cfBusy, setCfBusy] = useState(false);
+
+  useEffect(() => {
+    if (tab !== "curseforge" || cfStatus) return;
+    api
+      .cfKeyStatus()
+      .then((st) => {
+        setCfStatus(st);
+        if (st.configured) setCfKey("");
+      })
+      .catch(() => setCfStatus({ configured: false, masked: "", source: "settings" }));
+  }, [tab, cfStatus]);
+
+  async function saveCfKey() {
+    setCfBusy(true);
+    try {
+      const st = await api.cfKeySave(cfKey.trim());
+      setCfStatus(st);
+      setCfKey("");
+      toast(st.configured ? `Ключ CurseForge сохранён (${st.masked})` : "Ключ CurseForge удалён");
+    } catch (e) {
+      toast(String(e), "err");
+    } finally {
+      setCfBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (tab === "java" && !java) {
@@ -22,7 +50,6 @@ export function Settings() {
   }, [tab, java]);
 
   const maxCap = mem ? Math.max(512, mem.totalMb - 1536) : 16384;
-  const nameOk = isValidPlayerName(settings.playerName);
 
   return (
     <div className="view-enter flex h-full flex-col gap-4 overflow-y-auto p-6 pt-3">
@@ -33,6 +60,7 @@ export function Settings() {
           { id: "appearance", label: "Оформление", icon: Palette },
           { id: "java", label: "Java", icon: Coffee },
           { id: "jvm", label: "Память и JVM", icon: SlidersHorizontal },
+          { id: "curseforge", label: "CurseForge", icon: Globe2 },
         ] as const).map((t) => (
           <button key={t.id} className={`btn ${tab === t.id ? "btn-primary" : ""}`} onClick={() => setTab(t.id)}>
             <t.icon size={14} /> {t.label}
@@ -195,26 +223,7 @@ export function Settings() {
             )}
           </section>
 
-          <section className="glass card-hover space-y-3 p-5">
-            <SectionTitle icon={<User size={15} />} title="Ник в игре" />
-            <div className="flex items-center gap-2">
-              <input
-                className={`inp max-w-64 ${nameOk ? "" : "!border-[color:var(--danger)]"}`}
-                maxLength={16}
-                value={settings.playerName}
-                onChange={(e) => patch({ playerName: e.target.value.replace(/[^A-Za-z0-9_]/g, "") })}
-                placeholder="deBangPlayer"
-                aria-label="Ник в игре"
-              />
-              {nameOk ? (
-                <span className="text-[11.5px] opacity-50">3–16 символов: [A-Za-z0-9_] · подставляется в --username</span>
-              ) : (
-                <span className="text-[11.5px]" style={{ color: "var(--danger)" }}>
-                  Ник должен быть 3–16 символов: A–Z, 0–9, _
-                </span>
-              )}
-            </div>
-          </section>
+
 
           <section className="glass card-hover space-y-3 p-5">
             <SectionTitle icon={<Search size={15} />} title="Произвольный путь к java" />
@@ -258,6 +267,66 @@ export function Settings() {
                 {manualOk}
               </p>
             )}
+          </section>
+        </div>
+      )}
+
+      {tab === "curseforge" && (
+        <div className="grid grid-cols-2 gap-4">
+          <section className="glass card-hover space-y-3 p-5">
+            <SectionTitle icon={<KeyRound size={15} />} title="Ключ CurseForge API" />
+            <p className="text-[12px] opacity-65">
+              CurseForge требует личный API-ключ. Получить: curseforge.com/minecraft →
+              «Settings» → «API Key». Ключ хранится в
+              <code> ~/.local/share/debang-launcher/curseforge.key</code> с правами 600 и
+              используется только для запросов к CurseForge.
+            </p>
+            {cfStatus?.configured ? (
+              <div className="flex items-center gap-2 text-[12.5px]">
+                <span className="badge badge-accent">ключ сохранён</span>
+                <span className="font-mono-console">{cfStatus.masked}</span>
+                <span className="opacity-50">({cfStatus.source === "env" ? "из переменной окружения" : "из настроек"})</span>
+                <button
+                  className="btn btn-danger ml-auto !py-1 !px-2 text-[12px]"
+                  onClick={() => {
+                    setCfKey("");
+                    void saveCfKey();
+                  }}
+                >
+                  <Trash2 size={12} /> удалить
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  className="inp font-mono-console flex-1 !text-[12px]"
+                  placeholder="Вставь API-ключ CurseForge"
+                  value={cfKey}
+                  onChange={(e) => setCfKey(e.target.value)}
+                />
+                <button
+                  className="btn btn-primary"
+                  disabled={!cfKey.trim() || cfBusy}
+                  onClick={() => void saveCfKey()}
+                >
+                  {cfBusy ? <span className="spinner !size-3.5" /> : <KeyRound size={14} />} Сохранить
+                </button>
+              </div>
+            )}
+            <p className="text-[11.5px] opacity-55">
+              Пока ключа нет, вкладка CurseForge в каталоге покажет подсказку. Источник
+              Modrinth работает без ключа.
+            </p>
+          </section>
+
+          <section className="glass card-hover space-y-3 p-5">
+            <SectionTitle icon={<Info size={15} />} title="Что доступно с CurseForge" />
+            <ul className="list-disc space-y-1 pl-4 text-[12px] opacity-70">
+              <li>Поиск модов, ресурспаков, шейдеров и сборок CurseForge</li>
+              <li>Установка сборки целиком по её manifest.json (с overrides)</li>
+              <li>Установка отдельного файла в mods / resourcepacks / shaderpacks активной версии</li>
+              <li>Учитывается версия игры и загрузчик активной версии</li>
+            </ul>
           </section>
         </div>
       )}

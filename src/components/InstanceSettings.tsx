@@ -90,7 +90,7 @@ export function InstanceSettings({
           </button>
         </div>
         <p className="text-[11.5px] opacity-55">
-          MC {cfg.version} · {cfg.loader} · применяется только к этому инстансу
+          MC {cfg.version} · {cfg.loader} · применяется только к этой версии
         </p>
 
         <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-white/10 p-3 hover:bg-white/5">
@@ -126,7 +126,7 @@ export function InstanceSettings({
 
         <div className="space-y-2.5 rounded-xl border border-white/10 p-3">
           <div className="flex items-center gap-2 text-[12.5px] font-semibold">
-            <Network size={14} style={{ color: "var(--accent)" }} /> Прокси инстанса
+            <Network size={14} style={{ color: "var(--accent)" }} /> Прокси версии
           </div>
           <div className="flex gap-2">
             <select

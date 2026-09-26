@@ -179,7 +179,7 @@ pub fn valid_instance_id(id: &str) -> bool {
 
 pub fn instance_dir(id: &str) -> Result<PathBuf, String> {
     if !valid_instance_id(id) {
-        return Err(format!("недопустимый идентификатор инстанса «{}»", id));
+        return Err(format!("недопустимый идентификатор версии «{}»", id));
     }
     Ok(instances_root().join(id))
 }
@@ -286,7 +286,7 @@ pub fn create_instance(
 ) -> Result<InstanceInfo, String> {
     let base = slugify(&name);
     if base.is_empty() {
-        return Err("Некорректное имя инстанса".into());
+        return Err("Некорректное имя версии".into());
     }
     let loader = canonical_loader(&loader)?;
     let version = version.trim().to_string();
@@ -336,7 +336,7 @@ pub fn create_instance(
 pub fn delete_instance(id: String) -> Result<(), String> {
     let dir = instance_dir(&id)?;
     if !dir.exists() {
-        return Err("Инстанс не найден".into());
+        return Err("Версия не найдена".into());
     }
     fs::remove_dir_all(dir).map_err(|e| e.to_string())
 }
@@ -402,6 +402,138 @@ fn info_for(cfg: InstanceConfig) -> InstanceInfo {
     }
 }
 
+/// One mod file inside `mods/`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModEntry {
+    pub file: String,
+    pub name: String,
+    pub size: u64,
+    pub enabled: bool,
+    pub broken: bool,
+}
+
+/// Disabled mods keep their name and get this suffix: Minecraft loads
+/// only `*.jar`, so the mod simply stops being seen.
+const DISABLED_SUFFIX: &str = ".disabled";
+
+fn mods_dir(id: &str) -> Result<PathBuf, String> {
+    let dir = instance_dir(id)?.join("mods");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// Only plain file names may be passed from the webview.
+fn safe_mod_file(file: &str) -> Result<String, String> {
+    let f = file.trim();
+    if f.is_empty()
+        || f.len() > 200
+        || f.contains('/')
+        || f.contains('\\')
+        || f.contains("..")
+        || f.contains('\0')
+    {
+        return Err(format!("недопустимое имя файла: {}", file));
+    }
+    Ok(f.to_string())
+}
+
+/// Human friendly mod name: file name without the version-ish tail.
+fn pretty_mod_name(file: &str) -> String {
+    file.strip_suffix(DISABLED_SUFFIX)
+        .unwrap_or(file)
+        .trim_end_matches(".jar")
+        .trim_end_matches(".zip")
+        .to_string()
+}
+
+/// Mods of a version with their state; `broken` marks files that are not
+/// readable zip archives (e.g. a truncated download).
+#[tauri::command]
+pub fn list_instance_mods(instance_id: String) -> Result<Vec<ModEntry>, String> {
+    let dir = mods_dir(&instance_id)?;
+    let mut out = Vec::new();
+    for e in fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+        let path = e.path();
+        if !path.is_file() {
+            continue;
+        }
+        let file = e.file_name().to_string_lossy().to_string();
+        if !(file.ends_with(".jar") || file.ends_with(".zip") || file.ends_with(DISABLED_SUFFIX))
+        {
+            continue;
+        }
+        let enabled = !file.ends_with(DISABLED_SUFFIX);
+        let size = e.metadata().map(|m| m.len()).unwrap_or(0);
+        let broken = enabled
+            && std::fs::File::open(&path)
+                .ok()
+                .and_then(|f| zip::ZipArchive::new(f).ok())
+                .is_none();
+        out.push(ModEntry {
+            name: pretty_mod_name(&file),
+            size,
+            enabled,
+            broken,
+            file,
+        });
+    }
+    out.sort_by_key(|m| m.name.to_lowercase());
+    Ok(out)
+}
+
+/// Enable/disable a mod by renaming it to `*.jar.disabled` (Minecraft loads
+/// only `*.jar`, and the mod stays in place for easy re-enabling).
+#[tauri::command]
+pub fn toggle_instance_mod(instance_id: String, file: String, enable: bool) -> Result<(), String> {
+    let dir = mods_dir(&instance_id)?;
+    let f = safe_mod_file(&file)?;
+    // "x.jar" <-> "x.jar.disabled" — keep the original name, just toggle the suffix
+    let enabled_name = f
+        .strip_suffix(DISABLED_SUFFIX)
+        .unwrap_or(&f)
+        .to_string();
+    let disabled_name = format!("{}{}", enabled_name, DISABLED_SUFFIX);
+    let (from, to) = if enable {
+        (dir.join(&disabled_name), dir.join(&enabled_name))
+    } else {
+        (dir.join(&enabled_name), dir.join(&disabled_name))
+    };
+    if !from.exists() {
+        return Err("файл мода не найден".into());
+    }
+    if to.exists() {
+        fs::remove_file(&to).map_err(|e| e.to_string())?;
+    }
+    fs::rename(&from, &to).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_instance_mod(instance_id: String, file: String) -> Result<(), String> {
+    let dir = mods_dir(&instance_id)?;
+    let f = safe_mod_file(&file)?;
+    let p = dir.join(&f);
+    if !p.exists() {
+        return Err("файл мода не найден".into());
+    }
+    fs::remove_file(&p).map_err(|e| e.to_string())
+}
+
+/// Opens the version folder in the desktop file manager.
+#[tauri::command]
+pub fn open_instance_folder(instance_id: String) -> Result<(), String> {
+    let dir = instance_dir(&instance_id)?;
+    if !dir.exists() {
+        return Err("Версия не найдена".into());
+    }
+    let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    std::process::Command::new(opener)
+        .arg(&dir)
+        .spawn()
+        .map_err(|e| format!("не удалось открыть папку: {}", e))?;
+    Ok(())
+}
+
 #[tauri::command]
 /// Loose parameters on purpose: Tauri resolves each argument by its (snake_
 /// case) name, so the frontend must send exactly these keys:
@@ -413,7 +545,7 @@ pub fn update_instance_settings(
     auto_mem: Option<bool>,
 ) -> Result<InstanceInfo, String> {
     let dir = instance_dir(&instance_id)?;
-    let mut cfg = read_config(&dir).ok_or("Инстанс не найден или повреждён")?;
+    let mut cfg = read_config(&dir).ok_or("Версия не найдена или повреждена")?;
     if let Some(p) = proxy {
         if !matches!(p.kind.as_str(), "None" | "Socks5" | "Http") {
             return Err("неизвестный тип прокси".into());
@@ -495,7 +627,7 @@ pub fn import_run_file(instance_id: String, src: String) -> Result<String, Strin
     }
     let dir = instance_dir(&instance_id)?;
     if !dir.join("instance.json").exists() {
-        return Err("Инстанс не найден".into());
+        return Err("Версия не найдена".into());
     }
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let target = dir.join(&name);
@@ -585,5 +717,96 @@ mod settings_ipc_tests {
         assert!(p.proxy.is_none());
         assert_eq!(p.auto_mem, Some(true));
         assert!(p.auto_gc.is_none());
+    }
+}
+
+#[cfg(test)]
+mod mods_tests {
+    use super::*;
+
+    /// The commands resolve instance dirs through the real instances root, so
+    /// the fixture lives there (and is removed afterwards).
+    fn fixture(id: &str) -> PathBuf {
+        let inst = instances_root().join(id);
+        let _ = std::fs::remove_dir_all(&inst);
+        std::fs::create_dir_all(inst.join("mods")).unwrap();
+        std::fs::write(
+            inst.join("instance.json"),
+            format!(
+                r#"{{"id":"{}","name":"t","version":"1.20.1","loader":"Forge","created":"x"}}"#,
+                id
+            ),
+        )
+        .unwrap();
+        inst
+    }
+
+    #[test]
+    fn rejects_path_traversal_in_file_names() {
+        assert!(safe_mod_file("../evil.jar").is_err());
+        assert!(safe_mod_file("mods/evil.jar").is_err());
+        assert!(safe_mod_file("").is_err());
+        assert!(safe_mod_file("a\\b.jar").is_err());
+        assert!(safe_mod_file("good.jar").is_ok());
+        assert!(safe_mod_file("good.jar.disabled").is_ok());
+    }
+
+    #[test]
+    fn pretty_names_strip_extensions() {
+        assert_eq!(pretty_mod_name("sodium-0.5.8.jar"), "sodium-0.5.8");
+        assert_eq!(pretty_mod_name("sodium-0.5.8.jar.disabled"), "sodium-0.5.8");
+    }
+
+    #[test]
+    fn toggle_renames_both_ways() {
+        const ID: &str = "debang-mods-test-toggle";
+        let inst = fixture(ID);
+        let mods = inst.join("mods");
+        std::fs::write(mods.join("a.jar"), b"x").unwrap();
+        assert!(toggle_instance_mod(ID.into(), "a.jar".into(), false).is_ok());
+        assert!(mods.join("a.jar.disabled").exists());
+        assert!(toggle_instance_mod(ID.into(), "a.jar.disabled".into(), true).is_ok());
+        assert!(mods.join("a.jar").exists());
+        let _ = std::fs::remove_dir_all(&inst);
+    }
+
+    #[test]
+    fn delete_removes_file() {
+        const ID: &str = "debang-mods-test-del";
+        let inst = fixture(ID);
+        let mods = inst.join("mods");
+        std::fs::write(mods.join("b.jar"), b"x").unwrap();
+        assert!(delete_instance_mod(ID.into(), "b.jar".into()).is_ok());
+        assert!(!mods.join("b.jar").exists());
+        assert!(delete_instance_mod(ID.into(), "b.jar".into()).is_err());
+        let _ = std::fs::remove_dir_all(&inst);
+    }
+
+    #[test]
+    fn list_marks_state_and_broken_files() {
+        const ID: &str = "debang-mods-test-list";
+        let inst = fixture(ID);
+        let mods = inst.join("mods");
+        // минимальный валидный zip
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut zw = zip::ZipWriter::new(&mut buf);
+            zw.start_file::<_, ()>("a.txt", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            use std::io::Write;
+            zw.write_all(b"hello").unwrap();
+            zw.finish().unwrap();
+        }
+        std::fs::write(mods.join("good.jar"), buf.into_inner()).unwrap();
+        std::fs::write(mods.join("bad.jar"), b"not a zip").unwrap();
+        std::fs::write(mods.join("off.jar.disabled"), b"x").unwrap();
+        let list = list_instance_mods(ID.into()).unwrap();
+        let g = list.iter().find(|m| m.file == "good.jar").unwrap();
+        assert!(g.enabled && !g.broken);
+        let b = list.iter().find(|m| m.file == "bad.jar").unwrap();
+        assert!(b.enabled && b.broken, "битый файл должен быть помечен");
+        let o = list.iter().find(|m| m.file == "off.jar.disabled").unwrap();
+        assert!(!o.enabled);
+        let _ = std::fs::remove_dir_all(&inst);
     }
 }

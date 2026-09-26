@@ -373,8 +373,20 @@ fn extract_natives(jar: &Path, dest: &Path) -> Result<(), String> {
                 .file_name()
                 .map(|f| f.to_string_lossy().to_string())
                 .unwrap_or(name.clone());
-            let mut out = fs::File::create(dest.join(base)).map_err(|e| e.to_string())?;
-            copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+            let target = dest.join(&base);
+            // A previously truncated native (e.g. unpacked while the disk/tmpfs
+            // was full) makes the JVM die with SIGBUS inside ld.so on the next
+            // launch — always rewrite when the size does not match the archive.
+            let expected = entry.size() as u64;
+            if fs::metadata(&target).map(|m| m.len() == expected).unwrap_or(false) {
+                continue;
+            }
+            let mut out = fs::File::create(&target).map_err(|e| e.to_string())?;
+            let written = copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+            if written != expected {
+                let _ = fs::remove_file(&target);
+                return Err(format!("нативка {} распаковалась не полностью", base));
+            }
         }
     }
     Ok(())
@@ -467,7 +479,7 @@ where
 {
     if !matches!(loader, "Vanilla" | "Fabric" | "NeoForge" | "Forge") {
         return Err(format!(
-            "Автоматически ставим Vanilla, Fabric, NeoForge и Forge 1.13+ ({}: импортируйте run-скрипт в инстанс).",
+            "Автоматически ставим Vanilla, Fabric, NeoForge и Forge 1.13+ ({}: импортируйте run-скрипт в версию).",
             loader
         ));
     }
