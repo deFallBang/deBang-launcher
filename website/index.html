@@ -1,0 +1,733 @@
+<!doctype html>
+<html lang="ru" class="scroll-smooth">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>deBang Launcher — сверхлёгкий Minecraft-лаунчер на Rust + Tauri 2</title>
+    <meta
+      name="description"
+      content="deBang Launcher — Minecraft-лаунчер нового поколения на Rust + Tauri 2. Автоподбор JVM и GC, изолированный прокси, менеджер модов, каталог Modrinth и CurseForge. Windows, Linux и macOS."
+    />
+    <meta name="theme-color" content="#0b0d13" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="deBang Launcher — сверхлёгкий Minecraft-лаунчер" />
+    <meta
+      property="og:description"
+      content="Rust + Tauri 2 вместо Electron. Мгновенный старт, автонастройка JVM, менеджер модов и каталог Modrinth/CurseForge."
+    />
+    <meta property="og:image" content="assets/img/play.webp" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" as="image" href="assets/img/play.webp" />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <script>
+      // Флаг для progressive enhancement: без JS контент виден сразу.
+      document.documentElement.classList.add("js");
+    </script>
+  </head>
+
+  <body class="min-h-screen overflow-x-hidden">
+    <a
+      href="#hero"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-100 focus:rounded-lg focus:bg-neon-violet focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
+      >К содержимому</a
+    >
+
+    <!-- ================= HEADER ================= -->
+    <header
+      id="site-header"
+      class="fixed inset-x-0 top-0 z-50 transition duration-300"
+      data-scrolled="false"
+    >
+      <div class="shell flex h-16 items-center gap-4 md:h-20">
+        <a href="#hero" class="group flex shrink-0 items-center gap-2.5">
+          <span
+            class="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-neon-violet to-neon-cyan text-xs font-black text-white shadow-[0_8px_24px_-8px] shadow-neon-violet/70 transition group-hover:scale-105"
+            >dB</span
+          >
+          <span class="text-[15px] font-bold tracking-tight md:text-base">
+            de<span class="text-neon">Bang</span> Launcher
+          </span>
+        </a>
+
+        <nav class="ml-auto hidden items-center gap-1 lg:flex" aria-label="Основная навигация">
+          <a class="btn-quiet" href="#features">Преимущества</a>
+          <a class="btn-quiet" href="#bento">Фичи</a>
+          <a class="btn-quiet" href="#screenshots">Скриншоты</a>
+          <a class="btn-quiet" href="#download">Скачать</a>
+        </nav>
+
+        <a
+          id="gh-star-button"
+          class="btn-ghost ml-auto !px-3.5 !py-2 lg:ml-3"
+          data-repo="deFallBang/deBang-launcher"
+          href="https://github.com/deFallBang/deBang-launcher"
+          target="_blank"
+          rel="noopener"
+        >
+          <svg viewBox="0 0 16 16" class="size-4 fill-current" aria-hidden="true">
+            <path
+              d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+            />
+          </svg>
+          <span class="hidden sm:inline">GitHub</span>
+          <span
+            data-stars
+            class="rounded-md bg-white/8 px-1.5 py-0.5 font-mono text-[11px] tabular-nums"
+            title="Звёзды на GitHub"
+            >—</span
+          >
+        </a>
+
+        <button
+          id="menu-toggle"
+          class="btn-quiet !p-2 lg:hidden"
+          aria-label="Открыть меню"
+          aria-expanded="false"
+          aria-controls="mobile-menu"
+        >
+          <svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path id="menu-icon-open" stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16" />
+            <path id="menu-icon-close" class="hidden" stroke-linecap="round" d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </div>
+
+      <div id="mobile-menu" class="hidden border-t border-white/8 bg-ink-950/95 backdrop-blur-xl lg:hidden">
+        <nav class="shell flex flex-col gap-1 py-3" aria-label="Мобильная навигация">
+          <a class="btn-quiet !py-2.5" href="#features">Преимущества</a>
+          <a class="btn-quiet !py-2.5" href="#bento">Фичи</a>
+          <a class="btn-quiet !py-2.5" href="#screenshots">Скриншоты</a>
+          <a class="btn-quiet !py-2.5" href="#download">Скачать</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <!-- ================= HERO ================= -->
+      <section id="hero" class="relative overflow-hidden pt-28 pb-16 md:pt-36 md:pb-24">
+        <div class="halo" aria-hidden="true"></div>
+        <div class="pointer-events-none absolute inset-0 grid-lines" aria-hidden="true"></div>
+
+        <div class="shell relative grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-14">
+          <div>
+            <div class="reveal flex flex-wrap items-center gap-2" data-reveal>
+              <span class="chip">
+                <span class="size-1.5 rounded-full bg-neon-lime animate-glow"></span>
+                Rust + Tauri 2 · без Chromium
+              </span>
+              <span class="chip">Windows · Linux · macOS</span>
+            </div>
+
+            <h1
+              class="reveal mt-6 text-4xl leading-[1.05] font-black tracking-tight text-balance sm:text-5xl lg:text-6xl 2xl:text-7xl"
+              data-reveal
+              style="--reveal-delay: 60ms"
+            >
+              Сверхлёгкий.<br />
+              <span class="text-neon">Молниеносный.</span><br />
+              Бескомпромиссный.
+            </h1>
+
+            <p
+              class="reveal mt-6 max-w-xl text-base leading-relaxed text-pretty text-slate-400 sm:text-lg"
+              data-reveal
+              style="--reveal-delay: 120ms"
+            >
+              Minecraft-лаунчер нового поколения на стеке
+              <span class="font-semibold text-slate-200">Rust + Tauri 2</span>. Забудьте о тяжёлых
+              Electron-комбайнах и фризах JVM.
+            </p>
+
+            <div
+              class="reveal mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap"
+              data-reveal
+              style="--reveal-delay: 180ms"
+            >
+              <a class="btn-neon group" href="#download" data-os="windows">
+                <svg viewBox="0 0 24 24" class="size-4.5 fill-current" aria-hidden="true">
+                  <path
+                    d="M3 5.5 10.5 4.4v7.1H3V5.5Zm0 13L10.5 19.6v-7.1H3v6Zm8.5 1.2 9.5 2.2v-4.3h-9.5v2.1Zm0-15.4V6.6h9.5V2.3l-9.5 2.2Z"
+                  />
+                </svg>
+                Скачать для Windows
+                <span class="opacity-70 transition group-hover:translate-x-0.5">→</span>
+              </a>
+              <a class="btn-ghost group" href="#download" data-os="linux">
+                <svg viewBox="0 0 24 24" class="size-4.5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                  <path d="M12 3c3 0 3.6 2 3.6 4.2 0 1.6.6 2.4 1.4 3.6.7 1 1 1.7 1 3 0 2.4-1.6 4.2-3.2 5.3-.6.4-1 .9-1 1.6h-3.6c0-.7-.4-1.2-1-1.6-1.6-1.1-3.2-2.9-3.2-5.3 0-1.3.3-2 1-3 .8-1.2 1.4-2 1.4-3.6C8.4 5 9 3 12 3Z" />
+                  <circle cx="10" cy="8" r="1.1" fill="currentColor" />
+                  <circle cx="14" cy="8" r="1.1" fill="currentColor" />
+                  <path stroke-linecap="round" d="M10.5 12.2c1 .8 2 .8 3 0" />
+                </svg>
+                Скачать для Linux
+              </a>
+              <a
+                class="btn-ghost"
+                data-repo-link
+                href="https://github.com/deFallBang/deBang-launcher"
+                target="_blank"
+                rel="noopener"
+              >
+                Исходный код на GitHub
+              </a>
+            </div>
+
+            <dl
+              class="reveal mt-10 grid max-w-lg grid-cols-3 gap-4"
+              data-reveal
+              style="--reveal-delay: 240ms"
+            >
+              <div>
+                <dt class="text-[11px] tracking-wider text-slate-500 uppercase">Холодный старт</dt>
+                <dd class="mt-1 font-mono text-xl font-bold text-white sm:text-2xl">~0.4<span class="text-neon">с</span></dd>
+              </div>
+              <div>
+                <dt class="text-[11px] tracking-wider text-slate-500 uppercase">Потребление RAM</dt>
+                <dd class="mt-1 font-mono text-xl font-bold text-white sm:text-2xl">~90<span class="text-neon"> МБ</span></dd>
+              </div>
+              <div>
+                <dt class="text-[11px] tracking-wider text-slate-500 uppercase">Движок</dt>
+                <dd class="mt-1 font-mono text-xl font-bold text-white sm:text-2xl">Tauri 2</dd>
+              </div>
+            </dl>
+          </div>
+
+          <!-- Макет окна лаунчера -->
+          <div class="reveal relative" data-reveal style="--reveal-delay: 200ms">
+            <div
+              class="pointer-events-none absolute -inset-6 -z-10 rounded-[2rem] bg-gradient-to-br from-neon-violet/20 via-neon-magenta/10 to-neon-cyan/20 blur-2xl animate-glow"
+              aria-hidden="true"
+            ></div>
+
+            <div class="window-frame animate-float">
+              <div class="window-bar">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+                <span class="ml-2 font-mono text-[11px] text-slate-500">deBang Launcher</span>
+                <span class="ml-auto flex items-center gap-1.5">
+                  <span class="size-1.5 animate-pulse rounded-full bg-neon-lime"></span>
+                  <span class="font-mono text-[10px] text-slate-500" data-version>latest</span>
+                </span>
+              </div>
+              <img
+                src="assets/img/play.webp"
+                width="1286"
+                height="826"
+                alt="Окно deBang Launcher: экран «Играть» с активной сборкой"
+                class="block w-full"
+                loading="eager"
+                decoding="async"
+              />
+            </div>
+
+            <div class="glass-strong ring-gradient absolute -bottom-6 -left-2 hidden rounded-xl px-4 py-3 sm:block">
+              <p class="font-mono text-[11px] text-slate-500">подготовка</p>
+              <p class="mt-0.5 font-mono text-sm font-semibold text-neon-cyan">
+                libraries <span data-count>55</span>/55
+              </p>
+            </div>
+            <div class="glass-strong ring-gradient absolute -right-2 -top-5 hidden rounded-xl px-4 py-3 sm:block">
+              <p class="font-mono text-[11px] text-slate-500">auto GC</p>
+              <p class="mt-0.5 font-mono text-sm font-semibold text-neon-violet">ZGC / G1GC</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Бегущая строка стека -->
+        <div class="shell mt-16 md:mt-24">
+          <div class="relative overflow-hidden border-y border-white/8 py-4">
+            <div class="flex w-max animate-marquee gap-10 whitespace-nowrap font-mono text-xs tracking-widest text-slate-600 uppercase">
+              <span class="flex gap-10">
+                <span>Rust</span><span>Tauri 2</span><span>React 19</span><span>TypeScript</span>
+                <span>Tailwind 4</span><span>ZGC</span><span>G1GC</span><span>Modrinth API</span
+                ><span>CurseForge API</span><span>Fabric</span><span>NeoForge</span><span>Forge</span>
+              </span>
+              <span class="flex gap-10" aria-hidden="true">
+                <span>Rust</span><span>Tauri 2</span><span>React 19</span><span>TypeScript</span>
+                <span>Tailwind 4</span><span>ZGC</span><span>G1GC</span><span>Modrinth API</span
+                ><span>CurseForge API</span><span>Fabric</span><span>NeoForge</span><span>Forge</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ПРЕИМУЩЕСТВА ================= -->
+      <section id="features" class="relative py-20 md:py-28">
+        <div class="shell">
+          <div class="reveal max-w-2xl" data-reveal>
+            <p class="font-mono text-xs tracking-[0.2em] text-neon-cyan uppercase">преимущества</p>
+            <h2 class="mt-3 text-3xl font-black tracking-tight text-balance sm:text-4xl md:text-5xl">
+              Почему deBang <span class="text-neon">быстрее</span>
+            </h2>
+            <p class="mt-4 text-base text-pretty text-slate-400">
+              Никакого Electron и встроенного Chromium: нативный WebView операционной системы,
+              многопоточный Rust для подготовки версий и честный контроль над JVM-аргументами.
+            </p>
+          </div>
+
+          <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <article class="card reveal sm:col-span-2" data-reveal>
+              <div class="card-icon">⚡</div>
+              <h3 class="mt-4 text-lg font-bold">Мгновенный старт</h3>
+              <p class="mt-2 text-sm leading-relaxed text-slate-400">
+                Окно появляется за доли секунды, лаунчер занимает считанные мегабайты памяти. Никакого
+                оверхеда Chromium, фризов и «лагов после Alt+Tab».
+              </p>
+              <div class="mt-5 flex flex-wrap gap-2">
+                <span class="chip">нативный WebView</span>
+                <span class="chip">многопоточная загрузка</span>
+                <span class="chip">кэш версий</span>
+              </div>
+            </article>
+
+            <article class="card reveal" data-reveal style="--reveal-delay: 80ms">
+              <div class="card-icon">🧠</div>
+              <h3 class="mt-4 text-lg font-bold">Умная память</h3>
+              <p class="mt-2 text-sm leading-relaxed text-slate-400">
+                Xmx и Xms считаются от реального объёма ОЗУ с ограничением 70% — и по профилю, и
+                глобально.
+              </p>
+            </article>
+
+            <article class="card reveal" data-reveal style="--reveal-delay: 160ms">
+              <div class="card-icon">🛡️</div>
+              <h3 class="mt-4 text-lg font-bold">Изоляция профилей</h3>
+              <p class="mt-2 text-sm leading-relaxed text-slate-400">
+                У каждой версии свои mods, resourcepacks, shaderpacks, saves и логи. Удалили сборку —
+                остальные не тронуты.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= BENTO ФИЧИ ================= -->
+      <section id="bento" class="relative py-8 md:py-16">
+        <div class="shell">
+          <div class="reveal max-w-2xl" data-reveal>
+            <p class="font-mono text-xs tracking-[0.2em] text-neon-magenta uppercase">фичи</p>
+            <h2 class="mt-3 text-3xl font-black tracking-tight text-balance sm:text-4xl md:text-5xl">
+              Всё, что нужно лаунчеру
+            </h2>
+          </div>
+
+          <div class="mt-12 grid gap-5 md:grid-cols-6">
+            <!-- 1 -->
+            <article class="card reveal md:col-span-4" data-reveal>
+              <div class="flex items-start justify-between gap-6">
+                <div>
+                  <div class="card-icon">⚡</div>
+                  <h3 class="mt-4 text-xl font-bold">Мгновенный старт на Rust + Tauri 2</h3>
+                  <p class="mt-2 max-w-xl text-sm leading-relaxed text-slate-400">
+                    Потребляет считанные мегабайты памяти, стартует за доли секунды без оверхеда
+                    Chromium. Подготовка версии идёт многопочно: библиотеки и ассеты качаются пачками
+                    по 24 соединения, повреждённые файлы перекачиваются автоматически.
+                  </p>
+                </div>
+                <div class="hidden shrink-0 font-mono text-5xl font-black text-white/8 sm:block">01</div>
+              </div>
+            </article>
+
+            <!-- 2 -->
+            <article class="card reveal md:col-span-2" data-reveal style="--reveal-delay: 60ms">
+              <div class="card-icon">🧠</div>
+              <h3 class="mt-4 text-xl font-bold">Автоподбор JVM и GC</h3>
+              <p class="mt-2 text-sm leading-relaxed text-slate-400">
+                Generational ZGC для свежих версий (Java 21+), тюнингованный Aikar G1GC для легаси
+                (1.8.9 / 1.12.2), Xmx под ОЗУ системы. Флаги проверяются самой JVM: неподдерживаемый
+                флаг не убьёт запуск, а будет отброшен с пометкой в консоли.
+              </p>
+            </article>
+
+            <!-- 3 -->
+            <article class="card reveal md:col-span-2" data-reveal>
+              <div class="card-icon">🛡️</div>
+              <h3 class="mt-4 text-xl font-bold">Изолированный прокси-роутинг</h3>
+              <p class="mt-2 text-sm leading-relaxed text-slate-400">
+                SOCKS5 или HTTP/HTTPS — индивидуально под каждый профиль: тесты, мультиаккаунтинг и
+                изоляция сети без копий лаунчера. Пароль хранится в профиле с правами 600 и не
+                попадает в консоль.
+              </p>
+            </article>
+
+            <!-- 4 -->
+            <article class="card reveal md:col-span-2" data-reveal style="--reveal-delay: 60ms">
+              <div class="card-icon">🔍</div>
+              <h3 class="mt-4 text-xl font-bold">Умный парсер краш-логов</h3>
+              <p class="mt-2 text-sm leading-relaxed text-slate-400">
+                Вместо безликих «Exit code 1» — разбор <code class="font-mono text-neon-cyan">latest.log</code>
+                и <code class="font-mono text-neon-cyan">hs_err_pid*.log</code> с указанием
+                проблемных Mixin, видеодрайверов, нативных библиотек и нехватки памяти.
+              </p>
+            </article>
+
+            <!-- 5 -->
+            <article class="card reveal md:col-span-2" data-reveal>
+              <div class="card-icon">📦</div>
+              <h3 class="mt-4 text-xl font-bold">Менеджер модов</h3>
+              <p class="mt-2 text-sm leading-relaxed text-slate-400">
+                Прямая интеграция с Modrinth и CurseForge, автоустановка загрузчиков в один клик.
+                Список модов версии с поиском, включением и выключением (без переноса файлов) и
+                удалением — прямо в окне лаунчера.
+              </p>
+            </article>
+
+            <!-- 6 -->
+            <article class="card reveal md:col-span-2" data-reveal style="--reveal-delay: 60ms">
+              <div class="card-icon">🎨</div>
+              <h3 class="mt-4 text-xl font-bold">Глубокая кастомизация</h3>
+              <p class="mt-2 text-sm leading-relaxed text-slate-400">
+                Пресеты Catppuccin Mocha, Nord Frost, Midnight OLED, Cyberpunk Neon, акцентный цвет,
+                радиус скругления и кастомные фоны — фото, видео или анимированный градиент.
+              </p>
+            </article>
+
+            <!-- 7 -->
+            <article class="card reveal md:col-span-4" data-reveal>
+              <div class="flex flex-wrap items-start justify-between gap-6">
+                <div>
+                  <div class="card-icon">🔒</div>
+                  <h3 class="mt-4 text-xl font-bold">Приватность по умолчанию</h3>
+                  <p class="mt-2 max-w-xl text-sm leading-relaxed text-slate-400">
+                    Никакой телеметрии, рекламы и обязательной учётной записи. Профили, моды и логи
+                    лежат локально, лицензия MIT — можно форкнуть и собрать свою версию.
+                  </p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <span class="chip">MIT</span>
+                  <span class="chip">без телеметрии</span>
+                  <span class="chip">офлайн-работа</span>
+                  <span class="chip">Rust + Tauri 2</span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= СКРИНШОТЫ ================= -->
+      <section id="screenshots" class="relative py-20 md:py-28">
+        <div class="shell">
+          <div class="reveal flex flex-wrap items-end justify-between gap-6" data-reveal>
+            <div class="max-w-2xl">
+              <p class="font-mono text-xs tracking-[0.2em] text-neon-cyan uppercase">скриншоты</p>
+              <h2 class="mt-3 text-3xl font-black tracking-tight text-balance sm:text-4xl md:text-5xl">
+                Один интерфейс — <span class="text-neon">все экраны</span>
+              </h2>
+              <p class="mt-4 text-base text-pretty text-slate-400">
+                Нативный интерфейс без браузерных вкладок: тёмная тема, стеклянные панели и
+                неоновые акценты, которые следуют выбранным пресетом оформления.
+              </p>
+            </div>
+            <a class="btn-ghost" data-repo-link href="https://github.com/deFallBang/deBang-launcher" target="_blank" rel="noopener">
+              Все скриншоты в репозитории
+            </a>
+          </div>
+
+          <div class="mt-12 grid gap-5 lg:grid-cols-12">
+            <figure class="card reveal lg:col-span-7" data-reveal>
+              <div class="window-frame">
+                <div class="window-bar">
+                  <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+                  <span class="ml-2 font-mono text-[11px] text-slate-500">Каталог</span>
+                </div>
+                <img
+                  src="assets/img/catalog.webp"
+                  width="1286"
+                  height="826"
+                  alt="Каталог: моды, ресурспаки, шейдеры и сборки из Modrinth и CurseForge"
+                  class="block w-full"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </div>
+              <figcaption class="mt-4 text-sm text-slate-400">
+                <b class="text-slate-200">Каталог</b> — моды, ресурспаки, шейдеры и сборки из Modrinth
+                и CurseForge с установкой в активную версию.
+              </figcaption>
+            </figure>
+
+            <figure class="card reveal lg:col-span-5" data-reveal style="--reveal-delay: 80ms">
+              <div class="window-frame">
+                <div class="window-bar">
+                  <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+                  <span class="ml-2 font-mono text-[11px] text-slate-500">Версии</span>
+                </div>
+                <img
+                  src="assets/img/versions.webp"
+                  width="1286"
+                  height="826"
+                  alt="Версии: изолированные профили, моды и импорт сборок"
+                  class="block w-full"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </div>
+              <figcaption class="mt-4 text-sm text-slate-400">
+                <b class="text-slate-200">Версии</b> — изолированные профили, менеджер модов, импорт
+                сборок и запуск в один клик.
+              </figcaption>
+            </figure>
+
+            <figure class="card reveal lg:col-span-5" data-reveal>
+              <div class="window-frame">
+                <div class="window-bar">
+                  <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+                  <span class="ml-2 font-mono text-[11px] text-slate-500">Настройки</span>
+                </div>
+                <img
+                  src="assets/img/settings.webp"
+                  width="1286"
+                  height="826"
+                  alt="Настройки оформления: темы, акцентный цвет и фон"
+                  class="block w-full"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </div>
+              <figcaption class="mt-4 text-sm text-slate-400">
+                <b class="text-slate-200">Настройки</b> — темы, акцентный цвет, фон, Java и память по
+                умолчанию.
+              </figcaption>
+            </figure>
+
+            <figure class="card reveal lg:col-span-7" data-reveal style="--reveal-delay: 80ms">
+              <div class="glass-strong flex h-full min-h-56 flex-col justify-between rounded-2xl p-7">
+                <div>
+                  <h3 class="text-2xl font-black tracking-tight text-balance sm:text-3xl">
+                    Один лаунчер — <span class="text-neon">все загрузчики</span>
+                  </h3>
+                  <p class="mt-3 max-w-lg text-sm leading-relaxed text-pretty text-slate-400">
+                    Vanilla, Fabric, NeoForge и Forge ставятся автоматически: лаунчер сам скачивает
+                    клиент, библиотеки и ассеты, собирает classpath и запускает игру. Сборки 1.8.9 и
+                    старше собираются отдельно — с профилем из установщика Forge и Java 8, потому что
+                    старые установщики давно не работают.
+                  </p>
+                </div>
+                <div class="mt-6 flex flex-wrap gap-2">
+                  <span class="chip">Vanilla</span>
+                  <span class="chip">Fabric</span>
+                  <span class="chip">NeoForge</span>
+                  <span class="chip">Forge 1.13+</span>
+                  <span class="chip">Forge 1.8.9 (legacy)</span>
+                  <span class="chip">.minecraftpack</span>
+                  <span class="chip">CurseForge manifest</span>
+                </div>
+              </div>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= СКАЧАТЬ ================= -->
+      <section id="download" class="relative py-20 md:py-28">
+        <div class="shell">
+          <div class="reveal max-w-2xl" data-reveal>
+            <p class="font-mono text-xs tracking-[0.2em] text-neon-magenta uppercase">скачать</p>
+            <h2 class="mt-3 text-3xl font-black tracking-tight text-balance sm:text-4xl md:text-5xl">
+              Готовые сборки
+            </h2>
+            <p class="mt-4 text-base text-pretty text-slate-400">
+              Релизы собираются в CI и выкладываются на GitHub Releases. Установка — один файл,
+              без регистрации и телеметрии.
+            </p>
+          </div>
+
+          <div class="mt-12 grid gap-5 lg:grid-cols-3">
+            <!-- Windows -->
+            <article class="card reveal flex flex-col" data-reveal>
+              <div class="flex items-center gap-3">
+                <span class="card-icon !size-10"><svg viewBox="0 0 24 24" class="size-5 fill-current" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7.1H3V5.5Zm0 13L10.5 19.6v-7.1H3v6Zm8.5 1.2 9.5 2.2v-4.3h-9.5v2.1Zm0-15.4V6.6h9.5V2.3l-9.5 2.2Z"/></svg></span>
+                <div>
+                  <h3 class="text-lg font-bold">Windows</h3>
+                  <p class="text-xs text-slate-500">Windows 10/11 · x64</p>
+                </div>
+              </div>
+              <ul class="mt-5 space-y-2 text-sm text-slate-400">
+                <li class="flex items-center justify-between gap-3">
+                  <span class="font-mono">Setup .exe (NSIS)</span>
+                  <span class="chip !py-0.5">~3 МБ</span>
+                </li>
+                <li class="flex items-center justify-between gap-3">
+                  <span class="font-mono">MSI Installer</span>
+                  <span class="chip !py-0.5">en-US / ru-RU</span>
+                </li>
+              </ul>
+              <a class="btn-neon mt-6 w-full sm:mt-auto sm:pt-6" data-download="windows" href="https://github.com/deFallBang/deBang-launcher/releases/latest" target="_blank" rel="noopener">
+                Скачать для Windows
+              </a>
+              <p class="mt-3 text-xs text-slate-500">Требуется WebView2 Runtime (предустановлен в Windows 11).</p>
+            </article>
+
+            <!-- Linux -->
+            <article class="card reveal flex flex-col" data-reveal style="--reveal-delay: 80ms">
+              <div class="flex items-center gap-3">
+                <span class="card-icon !size-10">
+                  <svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                    <path d="M12 3c3 0 3.6 2 3.6 4.2 0 1.6.6 2.4 1.4 3.6.7 1 1 1.7 1 3 0 2.4-1.6 4.2-3.2 5.3-.6.4-1 .9-1 1.6h-3.6c0-.7-.4-1.2-1-1.6-1.6-1.1-3.2-2.9-3.2-5.3 0-1.3.3-2 1-3 .8-1.2 1.4-2 1.4-3.6C8.4 5 9 3 12 3Z" />
+                    <circle cx="10" cy="8" r="1" fill="currentColor" />
+                    <circle cx="14" cy="8" r="1" fill="currentColor" />
+                  </svg>
+                </span>
+                <div>
+                  <h3 class="text-lg font-bold">Linux</h3>
+                  <p class="text-xs text-slate-500">glibc · x86_64</p>
+                </div>
+              </div>
+              <ul class="mt-5 space-y-2 text-sm text-slate-400">
+                <li class="flex items-center justify-between gap-3">
+                  <span class="font-mono">.AppImage</span><span class="chip !py-0.5">~78 МБ</span>
+                </li>
+                <li class="flex items-center justify-between gap-3">
+                  <span class="font-mono">.deb / .rpm</span><span class="chip !py-0.5">~3.5 МБ</span>
+                </li>
+                <li class="flex items-center justify-between gap-3">
+                  <span class="font-mono">AUR</span><span class="chip !py-0.5">Arch</span>
+                </li>
+              </ul>
+              <a class="btn-neon mt-6 w-full sm:mt-auto sm:pt-6" data-download="linux" href="https://github.com/deFallBang/deBang-launcher/releases/latest" target="_blank" rel="noopener">
+                Скачать для Linux
+              </a>
+              <p class="mt-3 text-xs text-slate-500">Нужен WebKitGTK 4.1 и Java 8/17/21 под версию игры.</p>
+            </article>
+
+            <!-- Arch / из исходников -->
+            <article class="card reveal flex flex-col" data-reveal style="--reveal-delay: 160ms">
+              <div class="flex items-center gap-3">
+                <span class="card-icon !size-10">🐙</span>
+                <div>
+                  <h3 class="text-lg font-bold">Arch / исходники</h3>
+                  <p class="text-xs text-slate-500">AUR · cargo · npm</p>
+                </div>
+              </div>
+
+              <div class="mt-5">
+                <p class="text-xs tracking-wide text-slate-500 uppercase">Arch (AUR)</p>
+                <div class="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 p-2 pl-3">
+                  <code id="aur-cmd" class="min-w-0 flex-1 overflow-x-auto font-mono text-[13px] whitespace-nowrap text-neon-cyan">yay -S debang-launcher</code>
+                  <button
+                    class="btn-quiet shrink-0 !bg-white/8"
+                    data-copy="yay -S debang-launcher"
+                    type="button"
+                  >
+                    <svg viewBox="0 0 24 24" class="size-3.5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                      <rect x="9" y="9" width="11" height="11" rx="2" />
+                      <path d="M5 15V5a2 2 0 0 1 2-2h8" />
+                    </svg>
+                    <span data-copy-label>Копировать</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="mt-4">
+                <p class="text-xs tracking-wide text-slate-500 uppercase">Сборка из исходников</p>
+                <pre class="mt-2 overflow-x-auto rounded-xl border border-white/10 bg-black/40 p-3 font-mono text-[12px] leading-relaxed break-all whitespace-pre-wrap text-slate-300"><code>git clone <span data-repo-url-text>https://github.com/deFallBang/deBang-launcher</span>.git
+cd deBang-launcher
+npm install
+npm run tauri build</code></pre>
+              </div>
+
+              <a class="btn-ghost mt-6 w-full sm:mt-auto sm:pt-6" data-repo-link href="https://github.com/deFallBang/deBang-launcher" target="_blank" rel="noopener">
+                Репозиторий и Releases
+              </a>
+            </article>
+          </div>
+
+          <!-- Системные требования -->
+          <div class="card reveal mt-5" data-reveal>
+            <div class="grid gap-6 md:grid-cols-3">
+              <div>
+                <h3 class="text-base font-bold">Системные требования</h3>
+                <ul class="mt-3 space-y-1.5 text-sm text-slate-400">
+                  <li>Windows 10/11 x64 · Linux glibc x86_64 · macOS 13+</li>
+                  <li>WebView2 (Windows) или WebKitGTK 4.1 (Linux)</li>
+                  <li>Java: 8 для 1.8.9, 17 для 1.12–1.16, 21 для 1.17+</li>
+                </ul>
+              </div>
+              <div>
+                <h3 class="text-base font-bold">Поддерживаемые версии</h3>
+                <ul class="mt-3 space-y-1.5 text-sm text-slate-400">
+                  <li>Vanilla, Fabric, NeoForge — от 1.7.10 до 1.21+</li>
+                  <li>Forge 1.8.9 и старше — сборка профиля из установщика</li>
+                  <li>Импорт .minecraftpack и CurseForge manifest.json</li>
+                </ul>
+              </div>
+              <div>
+                <h3 class="text-base font-bold">Данные и приватность</h3>
+                <ul class="mt-3 space-y-1.5 text-sm text-slate-400">
+                  <li>Всё хранится локально в <code class="font-mono text-neon-cyan">~/.local/share/debang-launcher</code></li>
+                  <li>Никакой телеметрии и рекламы, аккаунт не нужен</li>
+                  <li>Диагностические логи — в <code class="font-mono text-neon-cyan">launcher.log</code> и в папке версии</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= CTA ================= -->
+      <section class="relative py-16 md:py-24">
+        <div class="shell">
+          <div class="card reveal text-center" data-reveal>
+            <div class="pointer-events-none absolute inset-x-0 -top-24 -z-10 h-48 bg-gradient-to-b from-neon-violet/20 to-transparent blur-2xl" aria-hidden="true"></div>
+            <h2 class="text-3xl font-black tracking-tight text-balance sm:text-4xl">
+              Попробуйте deBang <span class="text-neon">сегодня</span>
+            </h2>
+            <p class="mx-auto mt-4 max-w-xl text-base text-pretty text-slate-400">
+              Скачайте сборку, укажите папку с модами — и запускайте любую версию Minecraft без
+              ручной настройки classpath.
+            </p>
+            <div class="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <a class="btn-neon" data-download="windows" href="https://github.com/deFallBang/deBang-launcher/releases/latest" target="_blank" rel="noopener">
+                Скачать последний релиз
+              </a>
+              <a class="btn-ghost" data-repo-link href="https://github.com/deFallBang/deBang-launcher" target="_blank" rel="noopener">
+                Star на GitHub
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ================= FOOTER ================= -->
+    <footer class="border-t border-white/8 py-12">
+      <div class="shell flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
+        <div class="max-w-sm">
+          <div class="flex items-center gap-2.5">
+            <span class="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-neon-violet to-neon-cyan text-[11px] font-black text-white">dB</span>
+            <span class="text-sm font-bold">de<span class="text-neon">Bang</span> Launcher</span>
+          </div>
+          <p class="mt-3 text-sm leading-relaxed text-pretty text-slate-500">
+            Сверхлёгкий Minecraft-лаунчер на Rust + Tauri 2. Открытый исходный код под лицензией
+            MIT. Minecraft — товарный знак Mojang Studios; проект не связан с Mojang и не
+            распространяет её ресурсы.
+          </p>
+        </div>
+
+        <nav class="grid grid-cols-2 gap-x-12 gap-y-2 text-sm sm:grid-cols-3" aria-label="Навигация в подвале">
+          <a class="link-underline w-fit" href="#features">Преимущества</a>
+          <a class="link-underline w-fit" href="#bento">Фичи</a>
+          <a class="link-underline w-fit" href="#screenshots">Скриншоты</a>
+          <a class="link-underline w-fit" href="#download">Скачать</a>
+          <a class="link-underline w-fit" data-repo-link href="https://github.com/deFallBang/deBang-launcher" target="_blank" rel="noopener">Репозиторий</a>
+          <a class="link-underline w-fit" data-repo-link href="https://github.com/deFallBang/deBang-launcher/releases/latest" target="_blank" rel="noopener">Releases</a>
+          <a class="link-underline w-fit" href="https://github.com/deFallBang/deBang-launcher/issues" target="_blank" rel="noopener">Issues</a>
+          <a class="link-underline w-fit" href="https://github.com/deFallBang/deBang-launcher/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+        </nav>
+
+        <div class="text-sm md:text-right">
+          <p class="font-mono text-xs text-slate-500">
+            Версия: <span data-version>latest</span>
+          </p>
+          <p class="mt-1 font-mono text-xs text-slate-600">© <span data-year>2026</span> deFallBang</p>
+        </div>
+      </div>
+    </footer>
+
+    <script src="assets/js/main.js" defer></script>
+  </body>
+</html>

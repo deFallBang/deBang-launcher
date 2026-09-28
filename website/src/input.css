@@ -1,0 +1,345 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ *
+ *  deBang Launcher — landing
+ *  Тёмная киберпанк-тема: #0b0d13 + неоновые акценты, glassmorphism
+ *  и аккуратные градиентные бордеры.
+ * ------------------------------------------------------------------ */
+
+@theme {
+  --color-ink-950: #0b0d13;
+  --color-ink-900: #0f1219;
+  --color-ink-800: #141824;
+  --color-ink-700: #1b2030;
+  --color-ink-600: #252b3d;
+
+  --color-neon-violet: #a855f7;
+  --color-neon-magenta: #e879f9;
+  --color-neon-cyan: #22d3ee;
+  --color-neon-lime: #a3e635;
+
+  --font-sans:
+    "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    "JetBrains Mono", "SFMono-Regular", ui-monospace, "Cascadia Code", Menlo, monospace;
+
+  --animate-float: float 7s ease-in-out infinite;
+  --animate-glow: glow 4s ease-in-out infinite;
+  --animate-marquee: marquee 32s linear infinite;
+  --animate-sheen: sheen 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0);
+  }
+}
+
+@keyframes glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes sheen {
+  0% {
+    transform: translateX(-120%) rotate(12deg);
+  }
+  60%,
+  100% {
+    transform: translateX(240%) rotate(12deg);
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --shell-max: 84rem;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5.5rem;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-ink-950 font-sans text-slate-200 antialiased;
+    background-image:
+      radial-gradient(60rem 40rem at 12% -8%, rgba(168, 85, 247, 0.16), transparent 60%),
+      radial-gradient(52rem 34rem at 92% 4%, rgba(34, 211, 238, 0.12), transparent 62%),
+      radial-gradient(46rem 34rem at 50% 108%, rgba(232, 121, 249, 0.1), transparent 60%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    @apply bg-neon-violet/40 text-white;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-3 outline-neon-cyan;
+  }
+
+  /* Аккуратный скроллбар в стиле темы */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--color-neon-violet) 55%, transparent) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background:
+      linear-gradient(var(--color-neon-violet), var(--color-neon-cyan)) padding-box;
+  }
+}
+
+@layer components {
+  .shell {
+    width: min(100% - 2.5rem, var(--shell-max));
+    margin-inline: auto;
+  }
+
+  @media (min-width: 90rem) {
+    .shell {
+      width: min(100% - 5rem, 96rem);
+    }
+  }
+
+  /* --- стекло --- */
+  .glass {
+    @apply border border-white/8 bg-white/4 backdrop-blur-xl;
+  }
+
+  .glass-strong {
+    @apply border border-white/10 bg-ink-900/70 backdrop-blur-2xl;
+  }
+
+  /* --- градиентный бордер (через mask, чтобы не тянуть картинки) --- */
+  /* Tailwind 4 не умеет @apply пользовательских классов, поэтому общий
+     псевдоэлемент описан списком селекторов. */
+  .card,
+  .window-frame,
+  .ring-gradient {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .card::before,
+  .window-frame::before,
+  .ring-gradient::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      140deg,
+      color-mix(in oklab, var(--color-neon-violet) 70%, transparent),
+      transparent 38%,
+      transparent 62%,
+      color-mix(in oklab, var(--color-neon-cyan) 55%, transparent)
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  /* --- текстовые градиенты --- */
+  .text-neon {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(
+      100deg,
+      var(--color-neon-magenta),
+      var(--color-neon-violet) 45%,
+      var(--color-neon-cyan)
+    );
+  }
+
+  /* --- кнопки --- */
+  .btn-neon {
+    @apply relative inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3
+           text-sm font-semibold text-white transition duration-200
+           hover:-translate-y-0.5 active:translate-y-0
+           disabled:pointer-events-none disabled:opacity-50;
+    background-image: linear-gradient(
+      120deg,
+      var(--color-neon-violet),
+      var(--color-neon-magenta) 55%,
+      var(--color-neon-cyan)
+    );
+    box-shadow:
+      0 10px 30px -12px color-mix(in oklab, var(--color-neon-violet) 80%, transparent),
+      inset 0 1px 0 rgb(255 255 255 / 0.18);
+  }
+
+  .btn-neon:hover {
+    box-shadow:
+      0 18px 40px -14px color-mix(in oklab, var(--color-neon-magenta) 85%, transparent),
+      inset 0 1px 0 rgb(255 255 255 / 0.25);
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-white/12
+           bg-white/5 px-5 py-3 text-sm font-semibold text-slate-100 transition duration-200
+           hover:border-neon-cyan/50 hover:bg-white/10 hover:-translate-y-0.5 active:translate-y-0;
+  }
+
+  .btn-quiet {
+    @apply inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium
+           text-slate-300 transition hover:bg-white/8 hover:text-white;
+  }
+
+  /* --- карточки bento --- */
+  .card {
+    @apply overflow-hidden rounded-2xl border border-white/8 bg-white/4 p-6
+           backdrop-blur-xl transition duration-300 hover:-translate-y-1;
+  }
+
+  .card:hover {
+    @apply bg-white/7;
+    box-shadow: 0 26px 60px -30px color-mix(in oklab, var(--color-neon-violet) 85%, transparent);
+  }
+
+  .card-icon {
+    @apply grid size-11 place-items-center rounded-xl border border-white/10
+           bg-gradient-to-br from-neon-violet/25 to-neon-cyan/20 text-lg;
+  }
+
+  /* --- «свечение» под заголовком --- */
+  .halo {
+    position: absolute;
+    inset-inline: 0;
+    top: -14rem;
+    height: 34rem;
+    pointer-events: none;
+    background: radial-gradient(
+      24rem 16rem at 50% 50%,
+      color-mix(in oklab, var(--color-neon-violet) 35%, transparent),
+      transparent 70%
+    );
+    filter: blur(10px);
+  }
+
+  /* --- макет окна лаунчера --- */
+  .window-frame {
+    @apply overflow-hidden rounded-2xl border border-white/10 bg-ink-900/70 backdrop-blur-2xl;
+    box-shadow:
+      0 40px 120px -40px rgb(0 0 0 / 0.9),
+      0 0 0 1px rgb(255 255 255 / 0.04);
+  }
+
+  .window-bar {
+    @apply flex items-center gap-2 border-b border-white/8 bg-white/4 px-4 py-3;
+  }
+
+  .dot-red {
+    @apply size-2.5 rounded-full bg-[#ff5f57];
+  }
+  .dot-yellow {
+    @apply size-2.5 rounded-full bg-[#febc2e];
+  }
+  .dot-green {
+    @apply size-2.5 rounded-full bg-[#28c840];
+  }
+
+  /* --- появление при скролле ---
+     Скрываем только когда JS точно работает: иначе (noscript, упавший
+     скрипт, скриншот-бот) страница осталась бы пустой. */
+  .js .reveal {
+    opacity: 0;
+    transform: translate3d(0, 26px, 0);
+    transition:
+      opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+
+  .js .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
+  /* --- утилиты --- */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5
+           px-3 py-1 text-xs font-medium text-slate-300;
+  }
+
+  .link-underline {
+    @apply relative text-slate-300 transition hover:text-white;
+  }
+
+  .link-underline::after {
+    content: "";
+    @apply absolute -bottom-0.5 left-0 h-px w-0 bg-gradient-to-r from-neon-violet to-neon-cyan transition-all duration-300;
+  }
+
+  .link-underline:hover::after {
+    @apply w-full;
+  }
+
+  .grid-lines {
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(70% 60% at 50% 0%, #000 30%, transparent 75%);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+}

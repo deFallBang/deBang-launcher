@@ -3,6 +3,12 @@
 Ultra-styled, deeply customizable Minecraft launcher for Linux, Windows and macOS.
 Tauri v2 (Rust) + React/TypeScript + Tailwind.
 
+## Сайт проекта
+
+Лендинг лежит в [`website/`](website/) — статический проект на Tailwind 4
+без рантайм-зависимостей, публикуется на GitHub Pages вкладкой **Actions →
+Pages**. Локально: `cd website && npm run dev`.
+
 ## Возможности
 
 - **Настоящий запуск**: скачивает клиент, библиотеки и ассеты Mojang, собирает
