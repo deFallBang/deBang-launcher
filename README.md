@@ -81,13 +81,25 @@ npm run tauri dev            # режим разработки
 
 ## Скриншоты
 
-Скриншоты лежат в `packaging/screenshots/` (нужны для модерации Flathub):
+![Экран «Играть»](packaging/screenshots/01-play.png)
 
-```bash
-mkdir -p packaging/screenshots
-# запустите лаунчер, откройте нужный экран и снимите окно:
-grim -g "$(hyprctl clients -j | python3 -c "import json,sys; c=[x for x in json.load(sys.stdin) if 'debang' in x.get('class','')][0]; print(f"{c['at'][0]},{c['at'][1]} {c['size'][0]}x{c['size'][1]}")")" packaging/screenshots/dashboard.png
-```
+<table>
+  <tr>
+    <td width="50%"><img src="packaging/screenshots/02-versions.png" alt="Версии: профили, моды, импорт сборок"></td>
+    <td width="50%"><img src="packaging/screenshots/03-catalog.png" alt="Каталог: моды, ресурспаки, шейдеры, сборки"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Версии</b><br>изолированные профили, менеджер модов, импорт сборок</td>
+    <td align="center"><b>Каталог</b><br>Modrinth и CurseForge: моды, ресурспаки, шейдеры, сборки</td>
+  </tr>
+  <tr>
+    <td><img src="packaging/screenshots/04-settings.png" alt="Настройки оформления: темы, акцент, фон"></td>
+    <td align="center" valign="middle">
+      <b>Настройки</b><br>темы, акцентный цвет, фон<br><br>
+      <sub>Все экраны — нативный Tauri 2 + React,<br>без браузерных вкладок и рекламы.</sub>
+    </td>
+  </tr>
+</table>
 
 ## Лицензия
 

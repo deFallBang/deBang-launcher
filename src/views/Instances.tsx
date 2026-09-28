@@ -276,15 +276,15 @@ export function Instances() {
                   {ins.config.autoMem && <span className="badge !py-0 !text-[10px]">авто-RAM</span>}
                 </div>
                 <div className="font-mono-console truncate text-[10.5px] opacity-40">{ins.dir}</div>
-                <div className="mt-auto flex flex-wrap items-center gap-2">
+                <div className="mt-auto flex items-center gap-1.5">
                   <button
-                    className={`btn min-w-[92px] flex-1 truncate ${active ? "btn-primary" : ""}`}
+                    className={`btn min-w-0 flex-1 truncate !px-2.5 ${active ? "btn-primary" : ""}`}
                     onClick={() => patch({ selectedInstance: ins.config.id })}
                   >
                     {active ? "Выбран" : "Выбрать"}
                   </button>
                   <button
-                    className="btn"
+                    className="btn !px-2"
                     title="Моды версии: список, включение и удаление"
                     aria-label={`Моды версии ${ins.config.name}`}
                     onClick={() => setModsOf(ins.config.id)}
@@ -292,7 +292,7 @@ export function Instances() {
                     <Package size={14} className="shrink-0" />
                   </button>
                   <button
-                    className="btn"
+                    className="btn !px-2"
                     title="Настройки профиля: авто-GC, авто-память, прокси"
                     aria-label={`Настройки профиля ${ins.config.name}`}
                     onClick={() => setEditing(ins.config.id)}
@@ -300,7 +300,7 @@ export function Instances() {
                     <Settings2 size={14} className="shrink-0" />
                   </button>
                   <button
-                    className="btn"
+                    className="btn !px-2"
                     title="Импортировать run-скрипт или jar в версию"
                     aria-label={`Импортировать run-скрипт в ${ins.config.name}`}
                     disabled={busyId === ins.config.id}
@@ -309,7 +309,7 @@ export function Instances() {
                     {busyId === ins.config.id ? <span className="spinner !size-3.5" /> : <Download size={14} className="shrink-0" />}
                   </button>
                   <button
-                    className="btn btn-danger"
+                    className="btn btn-danger !px-2"
                     title="Удалить"
                     aria-label={`Удалить версию ${ins.config.name}`}
                     disabled={busyId === ins.config.id || (status?.running && status.instanceId === ins.config.id)}

@@ -54,24 +54,20 @@
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/01.png</image>
-      <caption>Обзор инстансов и запуск игры</caption>
+      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/01-play.png</image>
+      <caption>Экран «Играть»: активная сборка, ник и выделенная память</caption>
     </screenshot>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/02.png</image>
-      <caption>Каталог Modrinth: моды, ресурспаки, шейдеры и сборки</caption>
+      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/02-versions.png</image>
+      <caption>Версии: изолированные профили, моды, импорт сборок и удаление</caption>
     </screenshot>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/03.png</image>
-      <caption>Консоль игры с живым выводом</caption>
+      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/03-catalog.png</image>
+      <caption>Каталог: моды, ресурспаки, шейдеры и сборки из Modrinth и CurseForge</caption>
     </screenshot>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/04.png</image>
-      <caption>Оформление: темы, акцент и фон</caption>
-    </screenshot>
-    <screenshot type="default">
-      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/05.png</image>
-      <caption>Настройки Java, памяти и ника в игре</caption>
+      <image>https://raw.githubusercontent.com/deFallBang/deBang-launcher/main/packaging/screenshots/04-settings.png</image>
+      <caption>Настройки оформления: темы, акцентный цвет и фон</caption>
     </screenshot>
   </screenshots>
 
